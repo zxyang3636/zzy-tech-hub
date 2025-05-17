@@ -129,7 +129,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: "github", link: "https://github.com/zxyang3636/zzy-blog" },
+      { icon: "github", link: "https://github.com/zxyang3636/zzy-tech-hub" },
       { icon: "gitee", link: "https://gitee.com/zz_yang/" },
     ],
     //页脚
