@@ -1604,3 +1604,169 @@ nacos配置
 ]
 ```
 
+
+## 微服务保护
+
+### 雪崩问题
+
+微服务调用链路中的某个服务故障，引起整个链路中的所有微服务都不可用，这就是雪崩。
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-19_21-23-31.png)
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-19_21-23-44.png)
+
+**总结**
+
+>雪崩问题产生的原因是什么?
+
+- 微服务相互调用，服务提供者出现故障或阻塞。
+- 服务调用者没有做好异常处理，导致自身故障。
+- 调用链中的所有服务级联失败，导致整个集群故障
+
+
+>解决问题的思路有哪些?
+
+- 尽量避免服务出现故障或阻塞。
+
+✅保证代码的健壮性;
+
+✅保证网络畅通;
+
+✅能应对较高的并发请求;
+
+
+
+
+### 服务保护方案
+
+*请求限流*
+
+请求限流：限制访问微服务的请求的并发量，避免服务因流量激增出现故障，
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/wechat_2025-05-19_213425_995.png)
+
+---
+
+*线程隔离*
+
+
+线程隔离:也叫做舱壁模式，模拟船舱隔板的防水原理。通过限定每个业务能使用的线程数量而将故障业务隔离，避免
+故障扩散。
+
+线程隔离的思想来自轮船的舱壁模式：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-19_21-51-21.png)
+
+轮船的船舱会被隔板分割为N个相互隔离的密闭舱，假如轮船触礁进水，只有损坏的部分密闭舱会进水，而其他舱由于相互隔离，并不会进水。这样就把进水控制在部分船体，避免了整个船舱进水而沉没。
+
+为了避免某个接口故障或压力过大导致整个服务不可用，我们可以限定每个接口可以使用的资源范围，也就是将其“隔离”起来。
+
+---
+
+*服务熔断*
+
+服务熔断:由断路器统计请求的异常比例或慢调用比例，如果超出阈值则会熔断该业务，则拦截该接口的请求。熔断期间，所有请求快速失败，全都走`fallback`逻辑
+
+
+---
+
+>解决雪崩问题的常见方案有哪些?
+
+- 请求限流:限制流量在服务可以处理的范围，避免因突发流量而故障
+- 线程隔离:控制业务可用的线程数量，将故障隔离在一定范围
+- 服务熔断:将异常比例过高的接口断开，拒绝所有请求，直接走fallback
+- 失败处理:定义fallback逻辑，让业务失败时不再抛出异常，而是返回默认数据或友好提示
+
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-19_21-52-02.png)
+
+
+### Sentinel
+Sentinel是阿里巴巴开源的一款微服务流量控制组件。官网地址： https://sentinelguard.io/zh-cn/index.html
+
+---
+
+#### 安装运行Sentinel
+将`jar包`放在任意非中文、不包含特殊字符的目录下，重命名为sentinel-dashboard.jar：
+
+然后运行如下命令启动控制台：
+
+```Shell
+java -Dserver.port=8090 -Dcsp.sentinel.dashboard.server=localhost:8090 -Dproject.name=sentinel-dashboard -jar sentinel-dashboard.jar
+```
+
+
+访问`http://localhost:8090`页面，就可以看到`sentinel`的控制台了：
+
+需要输入账号和密码，默认都是：`sentinel`
+
+登录后，即可看到控制台，默认会监控sentinel-dashboard服务本身
+
+
+:::info
+sentinel安装地址：https://github.com/alibaba/Sentinel/releases
+
+
+启动时可配置参数可参考官方文档：https://github.com/alibaba/Sentinel/wiki/%E5%90%AF%E5%8A%A8%E9%85%8D%E7%BD%AE%E9%A1%B9
+:::
+
+#### 微服务整合
+
+引入sentinel依赖
+```xml
+<!--sentinel-->
+<dependency>
+    <groupId>com.alibaba.cloud</groupId> 
+    <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+</dependency>
+```
+
+修改`application.yaml`文件，添加下面内容：
+```yaml
+spring:
+  cloud: 
+    sentinel:
+      transport:
+        dashboard: localhost:8090
+```
+
+重启`cart-service`，然后访问查询购物车接口，`sentinel`的客户端就会将服务访问的信息提交到sentinel-dashboard控制台。并展示出统计信息
+
+
+*簇点链路*
+
+所谓簇点链路，就是单机调用链路，是一次请求进入服务后经过的每一个被Sentinel监控的资源。默认情况下，Sentinel会监控SpringMVC的每一个Endpoint（接口）。
+因此，我们看到/carts这个接口路径就是其中一个簇点，我们可以对其进行限流、熔断、隔离等保护措施。
+
+不过，需要注意的是，我们的SpringMVC接口是按照Restful风格设计，因此购物车的查询、删除、修改等接口全部都是/carts路径：
+
+默认情况下Sentinel会把路径作为簇点资源的名称，无法区分路径相同但请求方式不同的接口，查询、删除、修改等都被识别为一个簇点资源，这显然是不合适的。
+
+所以我们可以选择打开Sentinel的请求方式前缀，把请求方式 + 请求路径作为簇点资源名：
+
+首先，在cart-service的`application.yml`中添加下面的配置：
+
+```yaml{6}[application.yml]
+spring:
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8090
+      http-method-specify: true # 开启请求方式前缀
+```
+
+
+### 请求限流
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-19_22-27-38.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
