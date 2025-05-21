@@ -1937,3 +1937,293 @@ Sentinel中的断路器不仅可以统计某个接口的`慢请求比例`，还�
 - 统计最近1000ms内的最少5次请求，如果慢调用比例不低于0.5，则触发熔断
 - 熔断持续时长20s
 
+
+
+## 分布式事务
+
+在分布式系统中，如果一个业务需要多个服务合作完成，而且每一个服务都有事务，多个事务必须同时成功或失败，这样的事务就是**分布式事务**。其中的每个服务的事务就是一个**分支事务**。整个业务称为**全局事务**。
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-21_20-22-10.png)
+
+
+由于订单、购物车、商品分别在三个不同的微服务，而每个微服务都有自己独立的数据库，因此下单过程中就会跨多个数据库完成业务。而每个微服务都会执行自己的本地事务：
+- 交易服务：下单事务
+- 购物车服务：清理购物车事务
+- 库存服务：扣减库存事务
+
+整个业务中，各个本地事务是有关联的。因此每个微服务的本地事务，也可以称为分支事务。多个有关联的分支事务一起就组成了全局事务。我们必须保证整个全局事务同时成功或失败。
+
+我们知道每一个分支事务就是传统的单体事务，都可以满足ACID特性，但全局事务跨越多个服务、多个数据库，是否还能满足呢？
+
+事务并未遵循ACID的原则，归其原因就是参与事务的多个子业务在不同的微服务，跨越了不同的数据库。虽然每个单独的业务都能在本地遵循ACID，但是它们互相之间没有感知，不知道有人失败了，无法保证最终结果的统一，也就无法遵循ACID的事务特性了。
+这就是分布式事务问题，出现以下情况之一就可能产生分布式事务问题：
+- 业务跨多个服务实现
+- 业务跨多个数据源实现
+
+
+### 初始Seata
+
+`Seata`是 2019 年 1 月份蚂蚁金服和阿里巴巴共同开源的分布式事务解决方案。致力于提供高性能和简单易用的分布式事务服务，为用户打造一站式的分布式解决方案。
+
+官网地址：http://seata.io/   其中的文档、播客中提供了大量的使用说明、源码分析。
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-21_20-36-08.png)
+
+
+其实分布式事务产生的一个重要原因，就是参与事务的多个分支事务互相无感知，不知道彼此的执行状态。因此解决分布式事务的思想非常简单：
+
+就是找一个统一的事务协调者，与多个分支事务通信，检测每个分支事务的执行状态，保证全局事务下的每一个分支事务同时成功或失败即可。大多数的分布式事务框架都是基于这个理论来实现的。
+
+在Seata的事务管理中有三个重要的角色：
+-  **TC (Transaction Coordinator) - 事务协调者**：维护全局和分支事务的状态，协调全局事务提交或回滚。 
+-  **TM (Transaction Manager) - 事务管理器**：定义全局事务的范围、开始全局事务、提交或回滚全局事务。 
+-  **RM (Resource Manager) - 资源管理器**：管理分支事务，与TC交谈以注册分支事务和报告分支事务的状态，并驱动分支事务提交或回滚。 
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-21_20-38-01.png)
+
+其中，TM和RM可以理解为Seata的客户端部分，引入到参与事务的微服务依赖中即可。将来TM和RM就会协助微服务，实现本地分支事务与TC之间交互，实现事务的提交或回滚。
+
+而TC服务则是事务协调中心，是一个独立的微服务，需要单独部署。
+
+
+### 部署TC服务
+
+
+1. 执行sql文件 文件地址：[seata-tc](https://zzyang.oss-cn-hangzhou.aliyuncs.com/sql/seata-tc.sql)
+
+会得到这样一个数据库和表⬇️
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-21_20-49-41.png)
+
+2. 上传我们的`seata服务` 和 `seata镜像`
+
+我们将整个seata文件夹拷贝到虚拟机的`/root`目录：
+
+必须要确保我们的服务都在同一网络下
+
+加载镜像
+```Bash
+docker load -i seata-1.5.2.tar
+```
+
+检查是否在同一网络下
+```Bash
+docker network ls
+
+docker inspect nacos
+
+docker inspect mysql
+
+```
+
+
+如果没在同一网络下执行该命令
+```Bash
+docker network connect hm-net nacos
+```
+
+
+执行docker命令
+```Bash
+docker run --name seata \
+-p 8099:8099 \
+-p 7099:7099 \
+-e SEATA_IP=192.168.146.131 \
+-v ./seata:/seata-server/resources \
+--privileged=true \
+--network hm-net \
+-d \
+seataio/seata-server:1.5.2
+```
+
+`SEATA_IP`参数的端口号换成自己的
+
+:::tip
+`7099`端口是web控制台
+
+`8099`端口是给我们微服务连接使用的
+:::
+
+查看nacos的服务列表，即可看到Seata服务
+
+访问该地址 http://192.168.146.131:7099/#/login   进入控制台
+
+---
+
+### 微服务集成Seata
+
+为了方便各个微服务集成seata，我们需要把seata配置共享到nacos，因此trade-service模块不仅仅要引入seata依赖，还要引入nacos依赖:
+
+1.引入依赖
+
+只要是服务的参与者，必须都要引入该依赖
+```xml
+<!--统一配置管理-->
+  <dependency>
+      <groupId>com.alibaba.cloud</groupId>
+      <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+  </dependency>
+  <!--读取bootstrap文件-->
+  <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-bootstrap</artifactId>
+  </dependency>
+  <!--seata-->
+  <dependency>
+      <groupId>com.alibaba.cloud</groupId>
+      <artifactId>spring-cloud-starter-alibaba-seata</artifactId>
+  </dependency>
+```
+
+2.改造配置
+
+首先在nacos上添加一个共享的seata配置，命名为`shared-seata.yaml`：
+
+```yaml
+seata:
+  registry: # TC服务注册中心的配置，微服务根据这些信息去注册中心获取tc服务地址
+    type: nacos # 注册中心类型 nacos
+    nacos:
+      server-addr: 192.168.150.101:8848 # nacos地址
+      namespace: "" # namespace，默认为空
+      group: DEFAULT_GROUP # 分组，默认是DEFAULT_GROUP
+      application: seata-server # seata服务名称
+      username: nacos
+      password: nacos
+  tx-service-group: hmall # 事务组名称
+  service:
+    vgroup-mapping: # 事务组与tc集群的映射关系
+      hmall: "default"
+```
+
+然后，改造trade-service模块，添加`bootstrap.yaml`：
+
+```yaml
+spring:
+  application:
+    name: trade-service # 服务名称
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      server-addr: 192.168.146.131 # nacos地址
+      config:
+        file-extension: yaml # 文件后缀名
+        shared-configs: # 共享配置
+          - dataId: shared-jdbc.yaml # 共享mybatis配置
+          - dataId: shared-log.yaml # 共享日志配置
+          - dataId: shared-swagger.yaml # 共享日志配置
+          - dataId: shared-seata.yaml # 共享seata配置
+```
+
+可以看到这里加载了共享的seata配置。
+
+然后改造application.yaml文件，内容如下：
+
+```yaml
+server:
+  port: 8085
+feign:
+  okhttp:
+    enabled: true # 开启OKHttp连接池支持
+  sentinel:
+    enabled: true # 开启Feign对Sentinel的整合
+hm:
+  swagger:
+    title: 交易服务接口文档
+    package: com.hmall.trade.controller
+  db:
+    database: hm-trade
+```
+
+
+
+查看seata日志，即可看到有哪些服务注册上来了
+```log
+13:41:25.411  INFO --- [ettyServerNIOWorker_1_1_2] i.s.c.r.processor.server.RegTmProcessor  : TM register success,message:RegisterTMRequest{applicationId='cart-service', transactionServiceGroup='hmall'},channel:[id: 0x5ab2a41f, L:/172.19.0.4:8099 - R:/192.168.146.1:62804],client version:1.5.2
+13:41:27.848  INFO --- [rverHandlerThread_1_1_500] i.s.c.r.processor.server.RegRmProcessor  : RM register success,message:RegisterRMRequest{resourceIds='jdbc:mysql://192.168.146.131:3306/hm-cart', applicationId='cart-service', transactionServiceGroup='hmall'},channel:[id: 0xd6dae7c4, L:/172.19.0.4:8099 - R:/192.168.146.1:62830],client version:1.5.2
+13:50:49.572  INFO --- [ettyServerNIOWorker_1_1_2] i.s.c.r.processor.server.RegTmProcessor  : TM register success,message:RegisterTMRequest{applicationId='item-service', transactionServiceGroup='hmall'},channel:[id: 0xf8d4148f, L:/172.19.0.4:8099 - R:/192.168.146.1:64349],client version:1.5.2
+13:50:50.541  INFO --- [rverHandlerThread_1_2_500] i.s.c.r.processor.server.RegRmProcessor  : RM register success,message:RegisterRMRequest{resourceIds='jdbc:mysql://192.168.146.131:3306/hm-item', applicationId='item-service', transactionServiceGroup='hmall'},channel:[id: 0xa4b01da3, L:/172.19.0.4:8099 - R:/192.168.146.1:64355],client version:1.5.2
+13:52:40.084  INFO --- [ettyServerNIOWorker_1_1_2] i.s.c.r.processor.server.RegTmProcessor  : TM register success,message:RegisterTMRequest{applicationId='trade-service', transactionServiceGroup='hmall'},channel:[id: 0xd939830d, L:/172.19.0.4:8099 - R:/192.168.146.1:64878],client version:1.5.2
+13:52:42.143  INFO --- [rverHandlerThread_1_3_500] i.s.c.r.processor.server.RegRmProcessor  : RM register success,message:RegisterRMRequest{resourceIds='jdbc:mysql://192.168.146.131:3306/hm-trade', applicationId='trade-service', transactionServiceGroup='hmall'},channel:[id: 0x4d6e0e40, L:/172.19.0.4:8099 - R:/192.168.146.1:64888],client version:1.5.2
+[root@localhost ~]# 
+```
+
+
+### XA模式
+
+XA 规范 是 X/Open 组织定义的分布式事务处理（DTP，Distributed Transaction Processing）标准，XA 规范 描述了全局的TM与局部的RM之间的接口，几乎所有主流的关系型数据库都对 XA 规范 提供了支持。Seata的XA模式如下：
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-21_22-11-38.png)
+
+>一阶段的工作：
+1. RM注册分支事务到TC
+2. RM执行分支业务sql但不提交
+3. RM报告执行状态到TC
+
+>二阶段的工作：
+- TC检测各分支事务执行状态
+  - 如果都成功，通知所有RM提交事务
+  - 如果有失败，通知所有RM回滚事务
+- RM接收TC指令，提交或回滚事务
+
+*总结*
+
+XA模式的优点是什么?
+- 事务的强一致性，满足ACID原则。
+- 常用数据库都支持，实现简单，并且没有代码侵入
+
+XA模式的缺点是什么?
+- 因为一阶段需要锁定数据库资源，等待二阶段结束才释放，性能较差
+- 依赖关系型数据库实现事务
+
+
+#### 实现XA模式
+
+Seata的starter已经完成了XA模式的自动装配，实现非常简单，步骤如下
+
+1.修改application.yml文件(每个参与事务的微服务)，开启XA模式:
+
+我们已经在nacos中配置了，所以直接去nacos中修改
+
+
+```yaml
+seata:
+  data-source-proxy-mode: XA
+```
+
+完整的：
+```yaml
+seata:
+  registry: # TC服务注册中心的配置，微服务根据这些信息去注册中心获取tc服务地址
+    type: nacos # 注册中心类型 nacos
+    nacos:
+      server-addr: 192.168.146.131:8848 # nacos地址
+      namespace: "" # namespace，默认为空
+      group: DEFAULT_GROUP # 分组，默认是DEFAULT_GROUP
+      application: seata-server # seata服务名称
+      username: nacos
+      password: nacos
+  tx-service-group: hmall # 事务组名称
+  service:
+    vgroup-mapping: # 事务组与tc集群的映射关系
+      hmall: "default"
+  data-source-proxy-mode: XA
+```
+
+其次，我们要利用@GlobalTransactional标记分布式事务的入口方法：
+
+```java
+@Override
+@GlobalTransactional
+public Long createOrder(OrderFormDTO orderFormDTO) {
+
+
+
+@Override
+@Transactional
+public void deductStock(List<OrderDetailDTO> items) {
+
+
+@Override
+@Transactional
+public void removeByItemIds(Collection<Long> itemIds) {
+```
