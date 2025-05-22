@@ -92,6 +92,7 @@ export default defineConfig({
         items: [
           { text: "Java", link: "/guide/server/javaThreadPool" },
           { text: "SpringCloud", link: "/guide/server/springCloud" },
+          { text: "RabbitMQ", link: "/guide/server/rabbitmq" },
           { text: "xxl-job", link: "/guide/server/xxljob" },
           { text: "消息推送", link: "/guide/server/xiaoxi" },
           // { text: "快速上手", link: "/getting-started" },

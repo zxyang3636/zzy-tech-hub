@@ -1961,7 +1961,7 @@ Sentinel中的断路器不仅可以统计某个接口的`慢请求比例`，还�
 - 业务跨多个数据源实现
 
 
-### 初始Seata
+### 初识Seata
 
 `Seata`是 2019 年 1 月份蚂蚁金服和阿里巴巴共同开源的分布式事务解决方案。致力于提供高性能和简单易用的分布式事务服务，为用户打造一站式的分布式解决方案。
 
@@ -2227,3 +2227,52 @@ public void deductStock(List<OrderDetailDTO> items) {
 @Transactional
 public void removeByItemIds(Collection<Long> itemIds) {
 ```
+
+
+
+
+### AT模式
+Seata主推的是AT模式，AT模式同样是分阶段提交的事务模型，不过缺弥补了XA模型中资源锁定周期过长的缺陷。
+
+流程图：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-22_20-06-29.png)
+
+
+
+阶段一RM的工作：
+- 注册分支事务
+- 记录undo-log（数据快照）
+- 执行业务sql并提交
+- 报告事务状态
+
+阶段二提交时RM的工作：
+- 删除undo-log即可
+
+阶段二回滚时RM的工作：
+- 根据undo-log恢复数据到更新前
+
+---
+
+>简述AT模式与XA模式最大的区别是什么？
+
+- XA模式一阶段不提交事务，锁定资源；AT模式一阶段直接提交，不锁定资源。
+- XA模式依赖数据库机制实现回滚；AT模式利用数据快照实现数据回滚。
+- XA模式强一致；AT模式最终一致
+
+---
+
+#### AT模式的使用
+
+1. 在每个服务的数据库中，执行sql生成一张表
+sql地址：[seata-at.sql](https://zzyang.oss-cn-hangzhou.aliyuncs.com/sql/seata-at.sql)
+
+
+2. 在nacos中修改配置文件
+
+```yaml
+seata:
+  data-source-proxy-mode: AT
+```
+这里默认不填即是AT模式
+
+
