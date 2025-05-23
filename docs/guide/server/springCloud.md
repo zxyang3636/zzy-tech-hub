@@ -2046,6 +2046,8 @@ seataio/seata-server:1.5.2
 
 访问该地址 http://192.168.146.131:7099/#/login   进入控制台
 
+seata服务中的application.yaml中配置的账号密码是 `admin`
+
 ---
 
 ### 微服务集成Seata

@@ -53,7 +53,7 @@
 - 业务安全依赖于Broker的可靠性
 
 
-### MQ技术选型
+## MQ技术选型
 
 MQ （MessageQueue），中文是消息队列，字面来看就是存放消息的队列。也就是异步调用中的Broker。
 
@@ -84,17 +84,107 @@ MQ （MessageQueue），中文是消息队列，字面来看就是存放消息�
 据统计，目前国内消息队列使用最多的还是RabbitMQ，再加上其各方面都比较均衡，稳定性也好
 
 
+## 安装部署rabbitmq
+
+上传我们的`mq.tar`,rabbitmq的镜像文件
+```Bash
+docker load -i mq.tar 
+```
+
+执行docker命令
+```Bash
+docker run \
+ -e RABBITMQ_DEFAULT_USER=itheima \
+ -e RABBITMQ_DEFAULT_PASS=123321 \
+ -v mq-plugins:/plugins \
+ --name mq \
+ --hostname mq \
+ -p 15672:15672 \
+ -p 5672:5672 \
+ --network hm-net\
+ -d \
+ rabbitmq:3.8-management
+
+```
+
+:::info
+15672是访问控制rabbitmq的控制台
+
+5672是将来收发消息的端口
+:::
 
 
 
+我们访问 http://192.168.146.131:15672  即可看到管理控制台。首次访问需要登录，默认的用户名和密码在配置文件中已经指定了。
+
+登录后即可看到管理控制台总览页面;
+
+---
+
+RabbitMQ对应的架构如图：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-23_21-09-41.png)
+
+其中包含几个概念：
+- publisher：生产者，也就是发送消息的一方
+- consumer：消费者，也就是消费消息的一方
+- queue：队列，存储消息。生产者投递的消息会暂存在消息队列中，等待消费者处理
+- exchange：交换机，负责消息路由。生产者发送的消息由交换机决定投递到哪个队列。
+- virtual host：虚拟主机，起到数据隔离的作用。每个虚拟主机相互独立，有各自的exchange、queue
 
 
 
+### 快速入门
+需求:在RabbitMO的控制台完成下列操作:
+1. 新建队列hello.queue1和hello.queue2
+2. 向默认的amp.fanout交换机发送一条消息
+3. 查看消息是否到达hello.queue1和hello.queue2
+
+**队列**
+
+我们打开Queues选项卡，新建一个队列：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-23_21-24-03.png)
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-23_21-24-34.png)
+再以相同的方式，创建一个队列，命名为hello.queue2
+
+**绑定关系**
+
+点击Exchanges选项卡，点击amq.fanout交换机，进入交换机详情页，然后点击Bindings菜单，在表单中填写要绑定的队列名称：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-23_21-25-56.png)
+
+**发送消息**
+
+再次回到`exchange`页面，找到刚刚绑定的`amq.fanout`，点击进入详情页，再次发送一条消息
+
+回到`Queues`页面，可以发现`hello.queue`中已经有一条消息了
+
+点击队列名称，进入详情页，查看队列详情，这次我们点击`get message`
+
+可以看到消息到达队列了
+
+---
+
+**消息发送的注意事项有哪些?**
+- 交换机只能路由消息，无法存储消息
+- 交换机只会路由消息给与其绑定的队列，因此队列必须与交
+换机绑定
 
 
 
+### 数据隔离
+**用户管理**
+
+点击Admin选项卡，首先会看到RabbitMQ控制台的用户管理界面：
+
+这里的用户都是RabbitMQ的管理或运维人员。目前只有安装RabbitMQ时添加的`itheima`这个用户。仔细观察用户表格中的字段，如下：
+- Name：`itheima`，也就是用户名
+- Tags：`administrator`，说明`itheima`用户是超级管理员，拥有所有权限
+- Can access virtual host： /，可以访问的`virtual host`，这里的`/`是默认的`virtual host`
 
 
+对于小型企业而言，出于成本考虑，我们通常只会搭建一套MQ集群，公司内的多个不同项目同时使用。这个时候为了避免互相干扰， 我们会利用`virtual host`的隔离特性，将不同项目隔离。一般会做两件事情：
+- 给每个项目创建独立的运维账号，将管理权限分离。
+- 给每个项目创建不同的`virtual host`，将每个项目的数据隔离。
 
 
 
