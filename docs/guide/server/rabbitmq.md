@@ -188,9 +188,209 @@ RabbitMQ对应的架构如图：
 
 
 
+## 快速入门案例(Simple模式)
+SpringAmqp的官方地址：https://spring.io/projects/spring-amqp
+
+
+**AMQP**
+
+Advanced Message Queuing Protocol，是用于在应用程序之间传递业务消息的开放标准。该协议与语言和平台无关，更符合微服务中独立性的要求。
+
+
+**Spring AMQP**
+
+Spring AMQP是基于AMQP协议定义的一套API规范，提供了模板来发送和接收消息。包含两部分，其中spring-amqp是基础抽象，spring-rabbit是底层的默认实现。
+
+---
+
+需求如下：
+- 利用控制台创建队列simple.queue
+- 在publisher服务中，利用SpringAMQP直接向simple.queue发送消息
+- 在consumer服务中，利用SpringAMQP编写消费者，监听simple.queue队列
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-26_21-52-20.png)
 
 
 
 
+新建一个队列
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-26_22-22-48.png)
 
 
+1. 引入依赖
+```xml
+<!--AMQP依赖，包含RabbitMQ-->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+```
+
+2. 配置RabbitMQ服务端信息
+```yaml [application.yaml]
+spring:
+  rabbitmq:
+    host: 192.168.146.131 # 你的虚拟机IP
+    port: 5672 # 端口
+    virtual-host: /hmall # 虚拟主机
+    username: hmall # 用户名
+    password: 123321 # 密码
+```
+
+
+在test包中建一个消息发送者
+```java
+@SpringBootTest
+class SpringAmqpTest {
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    @Test
+    public void testSimpleQueue() {
+        String queueName = "simple.queue";
+        String message = "Hello Spring AMQP!";
+        rabbitTemplate.convertAndSend(queueName, message);
+    }
+
+}
+```
+
+
+在项目代码中建一个消息消费者，并注册为bean
+```java
+@Component
+@Slf4j
+public class SpringRabbitListener {
+
+    @RabbitListener(queues = "simple.queue")
+    public void listenSimpleQueue(String msg) {
+        log.info("监听到simple.queue的消息:{}", msg);
+    }
+}
+```
+
+
+## WorkQueue(Work模式)
+`Work queues`，任务模型。简单来说就是让多个消费者绑定到一个队列，共同消费队列中的消息。
+
+成员：一个生产者，一个队列，多个消费者
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-26_22-27-11.png)
+
+
+```java
+@Test
+public void testWorkQueue() {
+    String queueName = "work.queue";
+    for (int i = 1; i <= 50; i++) {
+        String message = "Hello Spring AMQP!" + "  " + i;
+        rabbitTemplate.convertAndSend(queueName, message);
+    }
+}
+```
+
+```java
+    @RabbitListener(queues = "work.queue")
+    public void listenWorkQueue1(String msg) {
+        System.out.println("消费者1接收到消息：" + msg + "  " + LocalDateTime.now());
+    }
+
+    @RabbitListener(queues = "work.queue")
+    public void listenWorkQueue2(String msg) {
+        System.err.println("消费者2接收到消息：" + msg + "  " + LocalDateTime.now());
+    }
+```
+
+
+默认情况下，RabbitMQ的会将消息依次轮询投递给绑定在队列上的每一个消费者。但这并没有考虑到消费者是否已经处理完消息，可能出现消息堆积。
+
+因此我们需要修改application.yml，设置preFetch值为1，确保同一时刻最多投递给消费者1条消息：
+```yaml{11-13}[application.yml]
+logging:
+  pattern:
+    dateformat: MM-dd HH:mm:ss:SSS
+spring:
+  rabbitmq:
+    host: 192.168.146.131 # 你的虚拟机IP
+    port: 5672 # 端口
+    virtual-host: /hmall # 虚拟主机
+    username: hmall # 用户名
+    password: 123321 # 密码
+    listener:
+      simple:
+        prefetch: 1 # 每次只能获取一条消息，处理完成才能获取下一个消息
+
+```
+
+---
+
+Work模型的使用：
+- 多个消费者绑定到一个队列，可以加快消息处理速度
+- 同一条消息只会被一个消费者处理
+- 通过设置prefetch来控制消费者预取的消息数量，处理完一条再处理下一条，实现能者多劳
+
+## Fanout交换机
+
+交换机的作用主要是接收发送者发送的消息，并将消息路由到与其绑定的队列。
+
+常见交换机的类型有以下三种：
+- Fanout：广播
+- Direct：定向
+- Topic：话题
+
+---
+
+
+Fanout，英文翻译是扇出，我觉得在MQ中叫广播更合适。
+
+在广播模式下，消息发送流程是这样的：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-26_23-04-30.png)
+
+- 1）  可以有多个队列
+- 2）  每个队列都要绑定到Exchange（交换机）
+- 3）  生产者发送的消息，只能发送到交换机
+- 4）  交换机把消息发送给绑定过的所有队列
+- 5）  订阅队列的消费者都能拿到消息
+
+
+
+
+实现思路如下：
+- 在RabbitMQ控制台中，声明队列fanout.queue1和fanout.queue2
+- 在RabbitMQ控制台中，声明交换机hmall.fanout，将两个队列与其绑定
+- 在consumer服务中，编写两个消费者方法，分别监听fanout.queue1和fanout.queue2
+- 在publisher中编写测试方法，向hmall.fanout发送消息
+
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-26_23-08-02.png)
+
+
+```java
+    @Test
+    public void testFanoutQueue() {
+        // 队列名称
+        String exchangeName = "hmall.fanout";
+        String message = "Hello everyone";
+        // 发送消息，参数分别是:交互机名称、RoutingKey(暂时为空)、消息
+        rabbitTemplate.convertAndSend(exchangeName, null, message);
+    }
+```
+
+
+```java [SpringRabbitListener.java]
+    @RabbitListener(queues = "fanout.queue1")
+    public void listenFanoutQueue1(String msg) {
+        log.info("消费者1监听到fanout.queue1的消息:{}", msg);
+    }
+
+    @RabbitListener(queues = "fanout.queue2")
+    public void listenFanoutQueue2(String msg) {
+        log.info("消费者2监听到fanout.queue2的消息:{}", msg);
+    }
+```
+
+
+交换机的作用是什么?
+- 接收publisher发送的消息
+- 将消息按照规则路由到与之绑定的队列
+- FanoutExchange的会将消息路由到每个绑定的队列
