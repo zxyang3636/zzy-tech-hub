@@ -394,3 +394,146 @@ Fanout，英文翻译是扇出，我觉得在MQ中叫广播更合适。
 - 接收publisher发送的消息
 - 将消息按照规则路由到与之绑定的队列
 - FanoutExchange的会将消息路由到每个绑定的队列
+
+
+## Direct交换机
+
+在Fanout模式中，一条消息，会被所有订阅的队列都消费。但是，在某些场景下，我们希望不同的消息被不同的队列消费。这时就要用到Direct类型的Exchange。
+
+`Direct Exchange` 会将接收到的消息根据规则路由到指定的`Queue`，因此称为定向路由。
+- 每一个`Queue`都与`Exchange`设置一个`BindingKey`
+- 发布者发送消息时，指定消息的`RoutingKey`
+- `Exchange`将消息路由到`BindingKey`与消息`RoutingKey`一致的队列
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-27_21-58-51.png)
+
+---
+**案例需求如图：**
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-27_22-09-52.png)
+
+1. 创建两个`queue`
+
+- direct.queue1
+
+- direct.queue2
+
+2. 创建交换机并绑定：
+- hmall.direct
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-27_22-09-17.png)
+
+3. 生产者
+```java
+    @Test
+    public void testDirectQueue() {
+        String exchangeName = "hmall.direct";
+        String message = "Hello red";
+        rabbitTemplate.convertAndSend(exchangeName, "red", message);
+    }
+
+
+    @Test
+    public void testDirectQueue() {
+        String exchangeName = "hmall.direct";
+        String message = "Hello blue";
+        rabbitTemplate.convertAndSend(exchangeName, "blue", message);
+    }
+```
+
+4. 消费者
+```java
+    @RabbitListener(queues = "direct.queue1")
+    public void listenDirectQueue1(String msg) {
+        log.info("消费者1监听到direct.queue1的消息:{}", msg);
+    }
+
+    @RabbitListener(queues = "direct.queue2")
+    public void listenDirectQueue2(String msg) {
+        log.info("消费者2监听到direct.queue2的消息:{}", msg);
+    }
+```
+
+---
+
+**总结**
+
+描述下Direct交换机与Fanout交换机的差异？
+- Fanout交换机将消息路由给每一个与之绑定的队列
+- Direct交换机根据RoutingKey判断路由给哪个队列
+- 如果多个队列具有相同的RoutingKey，则与Fanout功能类似
+
+
+## Topic交换机
+
+`Topic`类型的`Exchange`与`Direct`相比，都是可以根据`RoutingKey`把消息路由到不同的队列。
+
+只不过`Topic`类型`Exchange`可以让队列在绑定`BindingKey` 的时候使用通配符！
+
+
+`BindingKey` 一般都是有一个或多个单词组成，多个单词之间以`.`分割，例如： `item.insert`
+
+通配符规则：
+- `#`：匹配一个或多个词
+- `*`：匹配不多不少恰好1个词
+
+举例：
+- `item.#`：能够匹配`item.spu.insert` 或者 `item.spu`
+- `item.*`：只能匹配`item.spu`
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-27_22-55-44.png)
+
+
+---
+
+**利用SpringAMQP演示DirectExchange的使用**
+
+需求如下：
+- 在RabbitMQ控制台中，声明队列topic.queue1和topic.queue2
+- 在RabbitMQ控制台中，声明交换机hmall. topic ，将两个队列与其绑定
+- 在consumer服务中，编写两个消费者方法，分别监听topic.queue1和topic.queue2
+- 在publisher中编写测试方法，利用不同的RoutingKey向hmall. topic发送消息
+
+1. 创建队列
+- `topic.queue1`
+- `topic.queue2`
+
+2. 创建交换机类型为`topic`，并绑定队列
+
+- `hmall.topic`
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-27_23-02-31.png)
+
+3. 生产者
+```java
+    @Test
+    public void testTopiceQueue() {
+        String exchangeName = "hmall.topic";
+        String message = "Hello all";
+        // china.news所有消费者都能收到
+        rabbitTemplate.convertAndSend(exchangeName, "china.news", message);
+    }
+```
+
+
+
+4. 消费者
+```java
+    @RabbitListener(queues = "topic.queue1")
+    public void listenTopicQueue1(String msg) {
+        log.info("消费者1监听到topic.queue1的消息:{}", msg);
+    }
+
+    @RabbitListener(queues = "topic.queue2")
+    public void listenTopicQueue2(String msg) {
+        log.info("消费者2监听到topic.queue2的消息:{}", msg);
+    }
+```
+
+---
+
+**总结**
+
+描述下`Direct`交换机与`Topic`交换机的差异？
+- `Topic`交换机接收的消息`RoutingKey`必须是多个单词，以 `.`分割
+- `Topic`交换机与队列绑定时的`bindingKey`可以指定通配符
+- `#`：代表0个或多个词
+- `*`：代表1个词
