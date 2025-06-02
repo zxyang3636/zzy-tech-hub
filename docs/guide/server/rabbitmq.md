@@ -537,3 +537,523 @@ Fanout，英文翻译是扇出，我觉得在MQ中叫广播更合适。
 - `Topic`交换机与队列绑定时的`bindingKey`可以指定通配符
 - `#`：代表0个或多个词
 - `*`：代表1个词
+
+
+## 基于Bean声明队列交换机
+
+
+在之前我们都是基于RabbitMQ控制台来创建队列、交换机。但是在实际开发时，队列和交换机是程序员定义的，将来项目上线，又要交给运维去创建。那么程序员就需要把程序中运行的所有队列和交换机都写下来，交给运维。在这个过程中是很容易出现错误的。
+
+因此推荐的做法是由程序启动时检查队列和交换机是否存在，如果不存在自动创建。
+
+---
+
+SpringAMQP提供了几个类，用来声明队列、交换机及其绑定关系：
+
+- Queue：用于声明队列，可以用工厂类QueueBuilder构建
+- Exchange：用于声明交换机，可以用工厂类ExchangeBuilder构建
+- Binding：用于声明队列和交换机的绑定关系，可以用工厂类BindingBuilder构建
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-29_20-08-57.png)
+
+
+### fanout示例
+
+
+在consumer中创建一个类，声明队列和交换机：
+
+>一般可以在消费者这边声明队列、交换机和绑定关系，因为作为发送方来讲，发送方不需要关心队列，发送发唯一关心的是交换机，向某个交换机发消息就可以了
+
+```java [FanoutConfig.java]
+@Configuration
+public class FanoutConfig {
+
+    @Bean
+    public FanoutExchange fanoutExchange(){
+//        return new FanoutExchange("hmall.fanout");
+        return ExchangeBuilder.fanoutExchange("hmall.fanout").build();
+    }
+
+    @Bean
+    public Queue fanoutQueue1() {
+        return QueueBuilder.durable("fanout.queue1").build();
+    }
+
+    @Bean
+    public Queue fanoutQueue2() {
+        return new Queue("fanout.queue2");
+    }
+
+    @Bean
+    public Binding fanoutQueue1Binding(Queue fanoutQueue1,FanoutExchange fanoutExchange) {
+        return BindingBuilder.bind(fanoutQueue1).to(fanoutExchange);
+    }
+
+    @Bean
+    public Binding fanoutQueue2Binding(Queue fanoutQueue2, FanoutExchange fanoutExchange) {
+        return BindingBuilder.bind(fanoutQueue2).to(fanoutExchange);
+    }
+}
+```
+
+**direct示例**
+
+direct模式由于要绑定多个KEY，会非常麻烦，每一个Key都要编写一个binding：
+```java
+package com.itheima.consumer.config;
+
+import org.springframework.amqp.core.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class DirectConfig {
+
+    /**
+     * 声明交换机
+     * @return Direct类型交换机
+     */
+    @Bean
+    public DirectExchange directExchange(){
+        return ExchangeBuilder.directExchange("hmall.direct").build();
+    }
+
+    /**
+     * 第1个队列
+     */
+    @Bean
+    public Queue directQueue1(){
+        return new Queue("direct.queue1");
+    }
+
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue1WithRed(Queue directQueue1, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue1).to(directExchange).with("red");
+    }
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue1WithBlue(Queue directQueue1, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue1).to(directExchange).with("blue");
+    }
+
+    /**
+     * 第2个队列
+     */
+    @Bean
+    public Queue directQueue2(){
+        return new Queue("direct.queue2");
+    }
+
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue2WithRed(Queue directQueue2, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue2).to(directExchange).with("red");
+    }
+    /**
+     * 绑定队列和交换机
+     */
+    @Bean
+    public Binding bindingQueue2WithYellow(Queue directQueue2, DirectExchange directExchange){
+        return BindingBuilder.bind(directQueue2).to(directExchange).with("yellow");
+    }
+}
+```
+
+## 基于注解声明队列交换机
+基于`@Bean`的方式声明队列和交换机比较麻烦，Spring还提供了基于注解方式来声明。
+
+例如，我们同样声明Direct模式的交换机和队列：
+
+```java [SpringRabbitListener.java]
+@Component
+@Slf4j
+public class SpringRabbitListener {
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue("direct.queue1"),
+            exchange = @Exchange(name = "hmall.exchange",type = ExchangeTypes.DIRECT),
+            key = {"blue","red"}
+    ))
+    public void listenDirectQueue1(String msg) {
+        log.info("消费者1监听到direct.queue1的消息:{}", msg);
+    }
+
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue("direct.queue2"),
+            exchange = @Exchange(name = "hmall.exchange",type = ExchangeTypes.DIRECT),
+            key = {"yellow","red"}
+    ))
+    public void listenDirectQueue2(String msg) {
+        log.info("消费者2监听到direct.queue2的消息:{}", msg);
+    }
+}
+```
+
+再试试Topic模式：
+```java
+@RabbitListener(bindings = @QueueBinding(
+    value = @Queue(name = "topic.queue1"),
+    exchange = @Exchange(name = "hmall.topic", type = ExchangeTypes.TOPIC),
+    key = "china.#"
+))
+public void listenTopicQueue1(String msg){
+    System.out.println("消费者1接收到topic.queue1的消息：【" + msg + "】");
+}
+
+@RabbitListener(bindings = @QueueBinding(
+    value = @Queue(name = "topic.queue2"),
+    exchange = @Exchange(name = "hmall.topic", type = ExchangeTypes.TOPIC),
+    key = "#.news"
+))
+public void listenTopicQueue2(String msg){
+    System.out.println("消费者2接收到topic.queue2的消息：【" + msg + "】");
+}
+```
+
+
+## 消息转换器
+
+`Spring`的消息发送代码接收的消息体是一个`Object`：
+
+`Spring`的对消息对象的处理是由`org.springframework.amqp.support.converter.MessageConverter`来处理的。而默认实现是`SimpleMessageConverter`，基于JDK的`ObjectOutputStream`完成序列化。
+
+存在下列问题：
+- JDK的序列化有安全风险
+- JDK序列化的消息太大
+- JDK序列化的消息可读性差
+
+---
+
+建议采用JSON序列化代替默认的JDK序列化，要做两件事情：
+
+1. 在publisher和consumer中都要引入jackson依赖：
+
+```xml
+<dependency>
+    <groupId>com.fasterxml.jackson.dataformat</groupId>
+    <artifactId>jackson-dataformat-xml</artifactId>
+    <version>2.9.10</version>
+</dependency>
+```
+注意，如果项目中引入了spring-boot-starter-web依赖，则无需再次引入Jackson依赖。
+
+配置消息转换器，在publisher和consumer两个服务的启动类中添加一个Bean即可：
+
+```java
+@Bean
+public MessageConverter messageConverter(){
+    // 1.定义消息转换器
+    Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+    // 2.配置自动创建消息id，用于识别不同消息，也可以在业务中基于ID判断是否是重复消息
+    jackson2JsonMessageConverter.setCreateMessageIds(true);
+    return jackson2JsonMessageConverter;
+}
+```
+消息转换器中添加的messageId可以便于我们将来做幂等性判断。
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-05-29_21-11-54.png)
+
+
+*消费者：*
+```java
+    @RabbitListener(queues = "object.queue")
+    public void listenObjectQueue2(Map<String, Object> msg) {
+        log.info("消费者监听到object.queue的消息:{}", msg);
+    }
+```
+
+```log
+05-29 21:15:53:382  INFO 8660 --- [ntContainer#7-1] c.i.consumer.mq.SpringRabbitListener     : 消费者监听到object.queue的消息:{age=21, name=jack}
+```
+
+
+
+## 业务集成及改造
+
+不管是生产者还是消费者，都需要配置MQ的基本信息。分为两步：
+
+```xml
+  <!--消息发送-->
+  <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+  </dependency>
+```
+
+```yaml
+spring:
+  rabbitmq:
+    host: 192.168.150.101 # 你的虚拟机IP
+    port: 5672 # 端口
+    virtual-host: /hmall # 虚拟主机
+    username: hmall # 用户名
+    password: 123 # 密码
+```
+
+
+在common的配置类中，配置消息转换器：
+```java
+@Configuration
+public class MqConfig {
+
+    @Bean
+    public MessageConverter messageConverter(){
+        Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+        return jackson2JsonMessageConverter;
+    }
+
+}
+
+
+```
+在 `hm-common\src\main\resources\META-INF\spring.factories` 下配置扫描包
+```
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.hmall.common.config.MyBatisConfig,\
+  com.hmall.common.config.JsonConfig,\
+  com.hmall.common.config.MqConfig,\
+  com.hmall.common.config.MvcConfig
+```
+
+**接收消息**(消费者)
+
+建一个`listener`包
+
+在trade-service服务中定义一个消息监听类：
+
+```java [PayStatusListener.java]
+@Component
+@RequiredArgsConstructor
+public class PayStatusListener {
+
+    private final IOrderService orderService;
+
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(name = "trade.pay.success.queue", durable = "true"),
+            exchange = @Exchange(name = "pay.direct"),
+            key = "pay.success"
+    ))
+    public void listenPaySuccess(Long orderId) {
+        orderService.markOrderPaySuccess(orderId);
+    }
+}
+```
+
+
+
+
+**发送消息**
+
+修改`pay-service`服务下的`com.hmall.pay.service.impl.PayOrderServiceImpl`类中的`tryPayOrderByBalance`方法：
+
+```java{23-27}
+    @Override
+    @Transactional
+    public void tryPayOrderByBalance(PayOrderFormDTO payOrderFormDTO) {
+        // 1.查询支付单
+        PayOrder po = getById(payOrderFormDTO.getId());
+        // 2.判断状态
+        if (!PayStatus.WAIT_BUYER_PAY.equalsValue(po.getStatus())) {
+            // 订单不是未支付，状态异常
+            throw new BizIllegalException("交易已支付或关闭！");
+        }
+        // 3.尝试扣减余额
+        userClient.deductMoney(payOrderFormDTO.getPw(), po.getAmount());
+        // 4.修改支付单状态
+        boolean success = markPayOrderSuccess(payOrderFormDTO.getId(), LocalDateTime.now());
+        if (!success) {
+            throw new BizIllegalException("交易已支付或关闭！");
+        }
+        // 5.修改订单状态
+//        Order order = new Order();
+//        order.setId(po.getBizOrderNo());
+//        order.setStatus(2);
+//        order.setPayTime(LocalDateTime.now());
+        try {
+            rabbitTemplate.convertAndSend("pay.direct", "pay.success", po.getBizOrderNo());
+        } catch (AmqpException e) {
+            log.error("发送支付状态失败，订单id:{}", po.getBizOrderNo(), e);
+        }
+//        tradeClient.markOrderPaySuccess(po.getBizOrderNo());
+    }
+```
+
+
+---
+
+<br>
+
+# MQ高级
+
+## 消息的可靠投递
+
+
+### 发送者重连
+
+有的时候由于网络波动，可能会出现发送者连接MQ失败的情况。通过配置我们可以开启连接失败后的重连机制:
+
+在消息的发送者配置如下：
+
+```yaml [application.yaml]
+spring:
+  rabbitmq:
+    connection-timeout: 1s # 设置MQ的连接超时时间
+    template:
+      retry:
+        enabled: true # 开启超时重试机制
+        initial-interval: 1000ms # 失败后的初始等待时间
+        multiplier: 1 # 失败后下次的等待时长倍数，下次等待时长 = initial-interval * multiplier
+        max-attempts: 3 # 最大重试次数
+```
+
+我们利用命令停掉RabbitMQ服务：
+```Bash
+docker stop mq
+```
+
+然后测试发送一条消息;
+
+:::warning
+当网络不稳定的时候，利用重试机制可以有效提高消息发送的成功率。不过SpringAMQP提供的重试机制是**阻塞式**的重试，也就是说多次重试等待的过程中，当前线程是被阻塞的，会影响业务性能。
+
+如果对于业务性能有要求，建议**禁用**重试机制。如果一定要使用，请合理配置等待时长和重试次数，当然也可以考虑使用**异步**线程来执行发送消息的代码。
+:::
+
+### 发送者确认
+
+一般情况下，只要生产者与MQ之间的网路连接顺畅，基本不会出现发送消息丢失的情况，因此大多数情况下我们无需考虑这种问题。
+不过，在少数情况下，也会出现消息发送到MQ之后丢失的现象，比如：
+- MQ内部处理消息的进程发生了异常
+- 生产者发送消息到达MQ后未找到Exchange
+- 生产者发送消息到达MQ的Exchange后，未找到合适的Queue，因此无法路由
+
+SpringAMQP提供了`Publisher Confirm`和`Publisher Return`两种确认机制。开启确机制认后，当发送者发送消息给MQ后，MQ会返回确认结果给发送者。返回的结果有以下几种情况:
+- 消息投递到了MQ，但是路由失败。此时会通过`PublisherReturn`返回路由异常原因，然后返回`ACK`，告知投递成功
+- 临时消息投递到了MQ，并且入队成功，返回`ACK`，告知投递成功
+- 持久消息投递到了MQ，并且入队完成持久化，返回`ACK`，告知投递成功
+- 其它情况都会返回`NACK`，告知投递失败
+
+其中`ack`和`nack`属于`Publisher Confirm`机制，`ack`是投递成功；`nack`是投递失败。而`return`则属于`Publisher Return`机制。
+
+默认两种机制都是关闭状态，需要通过配置文件来开启。
+
+---
+
+**SpringAMQP实现发送者确认🤫**
+
+1. 在publisher模块的application.yaml中添加配置：
+```yaml [application.yaml]
+spring:
+  rabbitmq:
+    publisher-confirm-type: correlated # 开启publisher confirm机制，并设置confirm类型
+    publisher-returns: true # 开启publisher return机制
+```
+
+这里`publisher-confirm-type`有三种模式可选🤠：
+- `none`：关闭confirm机制
+- `simple`：同步阻塞等待MQ的回执
+- `correlated`：MQ异步回调返回回执
+
+一般我们推荐使用`correlated`，回调机制。
+
+2. 定义ReturnCallback
+
+每个RabbitTemplate只能配置一个ReturnCallback，因此我们可以在配置类中统一设置。我们在publisher模块定义一个配置类：
+
+在config包下创建`MqConfig`
+
+内容如下：
+
+```java
+@Slf4j
+@AllArgsConstructor
+@Configuration
+public class MqConfig {
+    private final RabbitTemplate rabbitTemplate;
+
+    @PostConstruct
+    public void init(){
+        rabbitTemplate.setReturnsCallback(new RabbitTemplate.ReturnsCallback() {
+            @Override
+            public void returnedMessage(ReturnedMessage returned) {
+                log.error("触发return callback,");
+                log.debug("exchange: {}", returned.getExchange());
+                log.debug("routingKey: {}", returned.getRoutingKey());
+                log.debug("message: {}", returned.getMessage());
+                log.debug("replyCode: {}", returned.getReplyCode());
+                log.debug("replyText: {}", returned.getReplyText());
+            }
+        });
+    }
+}
+```
+
+
+3. 定义ConfirmCallback，发送消息，指定消息ID、消息ConfirmCallback
+
+由于每个消息发送时的处理逻辑不一定相同，因此`ConfirmCallback`需要在每次发消息时定义。具体来说，是在调用`RabbitTemplate`中的`convertAndSend`方法时，多传递一个参数：`CorrelationData`
+
+这里的`CorrelationData`中包含两个核心的东西：
+- `id`：消息的唯一标示，MQ对不同的消息的回执以此做判断，避免混淆
+- `SettableListenableFuture`：回执结果的`Future`对象
+
+
+将来MQ的回执就会通过这个Future来返回，我们可以提前给`CorrelationData`中的`Future`添加回调函数来处理消息回执：
+
+
+我们新建一个测试，向系统自带的交换机发送消息，并且添加`ConfirmCallback`：
+
+```java
+    @Test
+    public void testConfirmCallback() {
+        CorrelationData cd = new CorrelationData(UUID.randomUUID().toString());
+        cd.getFuture().addCallback(new ListenableFutureCallback<CorrelationData.Confirm>() {
+            @Override
+            public void onFailure(Throwable ex) {
+                // Future发生异常时的处理逻辑，基本不会触发
+                log.error("send message fail", ex);
+            }
+
+            @Override
+            public void onSuccess(CorrelationData.Confirm result) {
+                // Future接收到回执的处理逻辑，参数中的result就是回执内容
+                if (result.isAck()) { // result.isAck()，boolean类型，true代表ack回执，false 代表 nack回执
+                    log.debug("发送消息成功，收到 ack!");
+                } else { // result.getReason()，String类型，返回nack时的异常描述
+                    log.error("发送消息失败，收到 nack, reason : {}", result.getReason());
+                    // 消息重发或持久化
+                }
+            }
+        });
+        String exchangeName = "hmall.topic";  // 可以把交换机的名字改成不存在，这样就会走到nack
+        String message = "Hello all";
+        rabbitTemplate.convertAndSend(exchangeName, "blue", message, cd);
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+:::info
+如果没有看到日志：日志级别不够
+```yaml [application.yaml]
+logging:
+  pattern:
+    dateformat: MM-dd HH:mm:ss:SSS
+  level:
+    com.itheima: debug
+```
+
+如果是test中测试，我们是没有看到回执的，因为test不是正在运行的项目，我们可以在代码结尾添加睡眠时间
+```java
+Thread.sleep(2000);
+```
+:::
