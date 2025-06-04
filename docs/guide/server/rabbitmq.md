@@ -994,6 +994,9 @@ public class MqConfig {
 }
 ```
 
+配置类 `MqConfig` 中设置了一个消息返回的回调处理机制。当发送的消息因为某些原因未能成功投递到目标队列时（如交换机、路由键不匹配等），`rabbitTemplate` 会触发 `ReturnedMessage` 回调，可以日志记录详细的错误信息或补偿。
+
+---
 
 3. 定义ConfirmCallback，发送消息，指定消息ID、消息ConfirmCallback
 
@@ -1004,8 +1007,15 @@ public class MqConfig {
 - `SettableListenableFuture`：回执结果的`Future`对象
 
 
-将来MQ的回执就会通过这个Future来返回，我们可以提前给`CorrelationData`中的`Future`添加回调函数来处理消息回执：
+将来MQ的回执就会通过这个`Future`来返回，我们可以提前给`CorrelationData`中的`Future`添加回调函数来处理消息回执：
 
+---
+
+>为什么returnCallback只用写一次配置，而ConfirmCallback需要每次都写?
+
+因为消息需要被确认，并且是每条消息都需要被确认; `ConfirmCallback`只要记住 临时消息 到了交换机 就`ack`；持久化消息时进入了队并完成了消息持久化，才`ack`，这就是`ConfirmCallback`的作用；
+
+---
 
 我们新建一个测试，向系统自带的交换机发送消息，并且添加`ConfirmCallback`：
 
@@ -1057,6 +1067,23 @@ logging:
 Thread.sleep(2000);
 ```
 :::
+
+
+
+:::warning
+❗️注意：
+
+开启生产者确认比较消耗MQ性能，一般不建议开启。而且大家思考一下触发确认的几种情况：
+- 路由失败：一般是因为RoutingKey错误导致，往往是编程导致
+- 交换机名称错误：同样是编程错误导致
+- MQ内部故障：这种需要处理，但概率往往较低。因此只有对消息可靠性要求非常高的业务才需要开启，而且仅仅需要开启`ConfirmCallback`处理`nack`就可以了。
+:::
+
+
+<details>
+  <summary>关于Publisher Return</summary>
+  Publisher Return机制没必要开，因为路由失败是自己的编程问题导致，而不是mq的内部故障问题
+</details>
 
 
 ### MQ可靠性
@@ -1224,7 +1251,7 @@ public class SpringRabbitListener {
 那么就会 回执给rabbitmq **nack**,队列就会进行重新发送，重新发送到消费者再次尝试消费
 
 
-如果抛的是该异常⬇️，那么回执的是 **reject**，队列就会丢弃消息或发送到私信
+如果抛的是该异常⬇️，那么回执的是 **reject**，队列就会丢弃消息或发送到死信
 ```java
 throw new MessageConversionException("故意的");
 ```
@@ -1316,3 +1343,211 @@ public class ErrorMessageConfiguration {
 
 ---
 
+
+#### 业务幂等性
+
+产生场景：消费者执行完业务后 ，还没有回执就宕机了，结果判断为消息没有确认，还在队列中，再投递给消费者。因此就出现了重复消费的问题；
+
+**幂等**是一个数学概念，用函数表达式来描述是这样的：`f(x) = f(f(x))` 。在程序开发中，则是指同一个业务，执行一次或多次对业务状态的影响是一致的。
+
+
+有些业务天生就是幂等的，而有些不是，要根据业务场景区分
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-04_20-39-43.png)
+>常见的幂等：查询、删除
+>
+>常见的非幂等：更新操作
+
+---
+
+*唯一消息id*
+
+**方案一**，是给每个消息都设置一个唯一id，利用id区分是否是重复消息：
+
+1️⃣每一条消息都生成一个唯一的id，与消息一起投递给消费者。
+
+2️⃣消费者接收到消息后处理自己的业务，业务处理成功后将消息ID保存到数据库
+
+3️⃣如果下次又收到相同消息，去数据库查询判断是否存在，存在则为重复消息放弃处理。
+
+`SpringAMQP`的`MessageConverter`自带了`MessageID`的功能，我们只要开启这个功能即可。
+
+在消息的发送者，配置如下
+```java
+@Bean
+    public MessageConverter messageConverter(){
+        // 1.定义消息转换器
+        Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+        // 2.配置自动创建消息id，用于识别不同消息，也可以在业务中基于ID判断是否是重复消息
+        jackson2JsonMessageConverter.setCreateMessageIds(true);
+        return jackson2JsonMessageConverter;
+    }
+```
+
+在消费者，接收消息时，应使用`Message`对象接收
+```java
+    @RabbitListener(queues = "simple.queue")
+    public void listenSimpleQueue(Message message) {
+        log.info("监听到simple.queue的ID:{}", message.getMessageProperties().getMessageId());
+        log.info("监听到simple.queue的消息:{}", new String(message.getBody()));
+    }
+```
+
+```log
+06-04 21:00:06:868  INFO 3344 --- [ntContainer#3-1] c.i.consumer.mq.SpringRabbitListener     : 监听到simple.queue的ID:480f70f0-d658-4447-824b-022c3b8970e3
+06-04 21:00:06:869  INFO 3344 --- [ntContainer#3-1] c.i.consumer.mq.SpringRabbitListener     : 监听到simple.queue的消息:"Hello Spring AMQP!"
+```
+
+---
+
+*业务判断*
+
+**方案二**，是结合业务逻辑，基于业务本身做判断。以我们的余额支付业务为例：
+
+业务判断就是基于业务本身的逻辑或状态来判断是否是重复的请求或消息，不同的业务场景判断的思路也不一样。
+
+例如我们当前案例中，处理消息的业务逻辑是把订单状态从未支付修改为已支付。因此我们就可以在执行业务时判断订单状态是否是未支付，如果不是则证明订单已经被处理过，无需重复处理。
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-04_21-05-27.png)
+
+改造代码
+```java [PayStatusListener.java]
+@Component
+@RequiredArgsConstructor
+public class PayStatusListener {
+
+    private final IOrderService orderService;
+
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(name = "trade.pay.success.queue", durable = "true"),
+            exchange = @Exchange(name = "pay.direct"),
+            key = "pay.success"
+    ))
+    public void listenPaySuccess(Long orderId) {
+        Order order = orderService.getById(orderId);
+        // 判断订单状态，是否为未支付
+        if (order == null || order.getStatus() != 1) {
+            // 不做处理
+            return;
+        }
+        // 标记订单状态为已支付
+        orderService.markOrderPaySuccess(orderId);
+    }
+}
+```
+
+---
+
+**总结**
+
+>如何保证支付服务与交易服务之间的订单状态一致性？
+
+首先，支付服务会正在用户支付成功以后利用MQ消息通知交易服务，完成订单状态同步。
+
+其次，为了保证MQ消息的可靠性，我们采用了生产者确认机制、消费者确认、消费者失败重试等策略，确保消息投递和处理的可靠性。同时也开启了MQ的持久化，避免因服务宕机导致消息丢失。
+
+最后，我们还在交易服务更新订单状态时做了业务幂等判断，避免因消息重复消费导致订单状态异常。
+
+---
+
+>如果交易服务消息处理失败，有没有什么兜底方案？
+
+我们可以在交易服务设置定时任务，定期查询订单支付状态。这样即便MQ通知失败，还可以利用定时任务作为兜底方案，确保订单支付状态的最终一致性。
+
+
+
+### 延迟消息
+
+延迟消息：发送者发送消息时指定一个时间，消费者不会立刻收到消息，而是在指定时间之后才收到消息。
+
+延迟任务：设置在一定时间之后才执行的任务
+
+
+
+在RabbitMQ中实现延迟消息也有两种方案：
+- 死信交换机+TTL  (Time To Live，简写TTL)
+- 延迟消息插件
+---
+
+#### 死信交换机
+
+
+当一个队列中的消息满足下列情况之一时，就会成为`死信（dead letter）`：
+- 消费者使用`basic.reject`或 `basic.nack`声明消费失败，并且消息的`requeue`参数设置为`false`
+- 消息是一个过期消息（达到了队列或消息本身设置的过期时间），超时无人消费
+- 要投递的队列消息堆积满了，最早的消息可能成为死信
+
+如果队列通过`dead-letter-exchange`属性指定了一个交换机，那么该队列中的死信就会投递到这个交换机中。这个交换机称为`死信交换机（Dead Letter Exchange，简称DLX）`。
+
+
+绑定关系如下
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-04_21-36-58.png)
+
+
+消费者监听：
+```java
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue("dlx.queue"),
+            exchange = @Exchange(name = "dlx.direct", type = ExchangeTypes.DIRECT),
+            key = {"hi"}
+    ))
+    public void listenDlxQueue(String msg) {
+        log.info("消费者2监听到dlx.queue的消息:{}", msg);
+    }
+```
+
+配置我们的关系绑定，**普通交换机与普通队列是不能有消费者的**
+
+在`config`包下创建`NormalConfig`
+```java
+@Configuration
+public class NormalConfig {
+
+    @Bean
+    public DirectExchange normalExchange() {
+        return ExchangeBuilder.directExchange("normal.direct").build();
+    }
+
+    @Bean
+    public Queue normalQueue() {
+        return QueueBuilder
+                .durable("normal.queue")
+                .deadLetterExchange("dlx.direct")  // 指定死信交换机
+                .build();
+    }
+
+    @Bean
+    public Binding normalExchangeBinding(Queue normalQueue, DirectExchange normalExchange) {
+        return BindingBuilder.bind(normalQueue).to(normalExchange).with("hi");
+    }
+
+}
+```
+
+我们只需要向`normal.direct`中发消息，该消息就会到达`normal.queue`，到达后，由于`normal.queue`没有设置消费者，那么这个消息就会成为死信(过期以后)，
+成为死信后就会投递到`dlx.direct`，从而到达我们刚刚的消费者(listenDlxQueue)；
+
+发送者：
+```java
+    @Test
+    void testSendDelayMessage() {
+        rabbitTemplate.convertAndSend("normal.direct", "hi", "hello lalala", message -> {
+            message.getMessageProperties().setExpiration("10000");
+            return message;
+        });
+    }
+```
+
+---
+
+死信交换机有什么作用呢？
+1. 收集那些因处理失败而被拒绝的消息
+2. 收集那些因队列满了而被拒绝的消息
+3. 收集因TTL（有效期）到期的消息
+
+---
+
+:::warning
+这里的RoutingKey必须一致。死信在转移到死信队列时，他的Routing key也会保存下来。但是如果配置了x-dead-letter-routing-key这个参数的话，routingkey就会被替换为配置的这个值。 
+
+另外，死信在转移到死信队列的过程中，是没有经过消息发送者确认的，所以并不能保证消息的安全性。也就是说，publisher发送了一条消息，但最终consumer在10秒后才收到消息。我们成功实现了延迟消息。
+:::
