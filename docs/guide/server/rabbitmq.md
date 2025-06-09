@@ -800,6 +800,7 @@ spring:
 在common的配置类中，配置消息转换器：
 ```java
 @Configuration
+@ConditionalOnClass(RabbitTemplate.class)
 public class MqConfig {
 
     @Bean
@@ -1551,3 +1552,179 @@ public class NormalConfig {
 
 另外，死信在转移到死信队列的过程中，是没有经过消息发送者确认的，所以并不能保证消息的安全性。也就是说，publisher发送了一条消息，但最终consumer在10秒后才收到消息。我们成功实现了延迟消息。
 :::
+
+
+
+
+
+
+
+#### 延迟消息插件
+
+这个插件可以将普通交换机改造为支持延迟消息功能的交换机，当消息投递到交换机后可以暂存一定时间，到期后再投递到队列
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/wechat_2025-06-09_212414_912.png)
+
+官方文档说明：[文档](https://www.rabbitmq.com/blog/2015/04/16/scheduling-messages-with-rabbitmq)
+
+---
+
+插件下载地址：[下载地址](https://github.com/rabbitmq/rabbitmq-delayed-message-exchange)
+
+由于我们安装的MQ是`3.8`版本，因此这里下载`3.8.17`版本
+
+
+
+**docker安装**
+
+因为我们是基于Docker安装，所以需要先查看RabbitMQ的插件目录对应的数据卷。
+```bash
+docker volume inspect mq-plugins
+```
+结果如下：
+```json
+[
+    {
+        "CreatedAt": "2024-06-19T09:22:59+08:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/mq-plugins/_data",
+        "Name": "mq-plugins",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+```
+
+插件目录被挂载到了`/var/lib/docker/volumes/mq-plugins/_data`这个目录，我们上传插件到该目录下。
+
+因为之前部署mq时，已经挂载好了，现在只需上传该插件即可
+
+接下来执行命令，安装插件：
+```shell
+docker exec -it mq rabbitmq-plugins enable rabbitmq_delayed_message_exchange
+```
+
+
+---
+
+*使用步骤如下*
+
+1. 消费者
+
+两种方式：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-09_21-26-46.png)
+
+```java
+@RabbitListener(bindings = @QueueBinding(
+            value = @Queue("delay.queue"),
+            exchange = @Exchange(name = "delay.direct", delayed = "true", type = ExchangeTypes.DIRECT),
+            key = {"hi"}
+    ))
+    public void listenDelayQueue(String msg) {
+        log.info("消费者监听到delay.queue的消息:{}", msg);
+    }
+```
+2. 生产者
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-09_21-27-20.png)
+```java
+    @Test
+    void testSendDelayMessageByPlugins() {
+        rabbitTemplate.convertAndSend("delay.direct", "hi", "hello lalala", message -> {
+            message.getMessageProperties().setDelay(10000);
+            return message;
+        });
+    }
+```
+
+
+:::warning
+注意：
+
+延迟消息插件内部会维护一个本地数据库表，同时使用`Elang Timers功能实现计时`。如果消息的延迟时间设置较长，可能会导致堆积的延迟消息非常多，会带来较大的CPU开销，同时延迟消息的时间会存在误差。
+
+因此，**不建议设置延迟时间过长的延迟消息**。
+
+
+延时消息计时是由CPU完成的，依赖cpu去完成，所以耗费cpu资源。如果延迟时间设置过长，如一天，那么业务这一天内会产生大量 的延迟消息，带来很大的开销。
+:::
+
+
+
+
+#### 取消超时订单
+
+
+用户下单完成后，发送15分钟延迟消息，在15分钟后接收消息，检查支付状态：
+- 已支付：更新订单状态为已支付
+- 未支付：更新订单状态为关闭订单，恢复商品库存
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-09_21-45-23.png)
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-09_21-45-50.png)
+
+
+
+
+*代码业务改造*
+
+在`trade-service`服务中建`constans`包，建`MQConstans`接口，定义常量
+
+```java
+public interface MQConstans {
+    String DELAY_EXCHANGE_NAME = "trade.delay.direct";
+    String DELAY_ORDER_QUEUE_NAME = "trade.delay.order.queue";
+    String DELAY_ORDER_KEY_NAME = "delay.order.query";
+}
+```
+
+`listener`包下的`OrderDelayMessageListener`
+消费者
+```java
+@Component
+@RequiredArgsConstructor
+public class OrderDelayMessageListener {
+
+    private final IOrderService orderService;
+    private final PayClient payClient;
+
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(name = MQConstans.DELAY_ORDER_QUEUE_NAME),
+            exchange = @Exchange(name = MQConstans.DELAY_EXCHANGE_NAME, delayed = "true"),
+            key = MQConstans.DELAY_ORDER_KEY_NAME
+    ))
+    public void listenOrderDelayMessage(Long orderId) {
+        // 1.查询订单
+        Order order = orderService.getById(orderId);
+        // 2.检测订单状态，判断是否己支付
+        if (order == null && order.getStatus() != 1) {
+            // 订单不存在 或 已支付
+            return;
+        }
+        // 3. 未支付，需要查询支付流水状态
+        PayOrderDTO payOrderDTO = payClient.queryPayOrderByBizOrderNo(orderId);
+        // 4.判断是否支付
+        if (payOrderDTO != null && payOrderDTO.getStatus() == 3) {
+            // 4.1.已支付，标记订单状态为已支付
+            orderService.markOrderPaySuccess(orderId);
+        } else {
+            // 4.2.未支付，取消订单，回复库存
+            orderService.cancelOrder(orderId);
+        }
+    }
+}
+```
+
+
+生产者
+```java [OrderServiceImpl.java]
+rabbitTemplate.convertAndSend(MQConstans.DELAY_EXCHANGE_NAME,
+        MQConstans.DELAY_ORDER_KEY_NAME,
+        order.getId(),
+        message -> {
+            message.getMessageProperties().setDelay(10000);
+            return message;
+        });
+```
+

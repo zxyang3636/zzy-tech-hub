@@ -9,7 +9,7 @@ export const nav: DefaultTheme.Config["nav"] = [
       { text: "Java", link: "/guide/server/javaThreadPool" },
       { text: "SpringCloud", link: "/guide/server/springCloud" },
       { text: "Docker", link: "/guide/server/docker" },
-      // { text: "SpringCloud", link: "/guide/server/springCloud" },
+      { text: "RabbitMQ", link: "/guide/server/rabbitmq" },
       {
         // 分组标题1
         text: "其他",
