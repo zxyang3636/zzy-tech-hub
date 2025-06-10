@@ -10,6 +10,7 @@ export const nav: DefaultTheme.Config["nav"] = [
       { text: "SpringCloud", link: "/guide/server/springCloud" },
       { text: "Docker", link: "/guide/server/docker" },
       { text: "RabbitMQ", link: "/guide/server/rabbitmq" },
+      { text: "Elasticsearch", link: "/guide/server/elasticsearch" },
       {
         // 分组标题1
         text: "其他",
