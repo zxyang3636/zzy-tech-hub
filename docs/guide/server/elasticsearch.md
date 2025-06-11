@@ -237,3 +237,426 @@ select * from tb_goods where title like '%手机%';
 
 
 
+## IK分词器
+
+中文分词往往需要根据语义分析，比较复杂，这就需要用到中文分词器，例如**IK分词器**。IK分词器是林良益在2006年开源发布的，其采用的正向迭代最细粒度切分算法一直沿用至今。
+
+其安装的方式也比较简单
+
+**1. 下载ik分词器这个插件**
+
+github 链接：https://github.com/medcl/elasticsearch-analysis-ik
+
+github 下载地址：https://github.com/medcl/elasticsearch-analysis-ik/releases
+
+**2. 方案1**
+
+运行一个命令即可：
+```shell
+docker exec -it es ./bin/elasticsearch-plugin  install https://github.com/medcl/elasticsearch-analysis-ik/releases/download/v7.12.1/elasticsearch-analysis-ik-7.12.1.zip
+```
+然后重启es容器：
+```shell
+docker restart es
+```
+
+**2. 方案2**
+
+如果网速较差，也可以选择离线安装。
+首先，查看之前安装的Elasticsearch容器的plugins数据卷目录：
+```shell
+docker volume inspect es-plugins
+```
+
+可以看到`elasticsearch`的插件挂载到了`/var/lib/docker/volumes/es-plugins/_data`这个目录。我们需要把IK分词器上传至这个目录。
+
+找到ik分词器插件，安装的是`7.12.1`版本的ik分词器压缩文件;
+
+然后上传至虚拟机的`/var/lib/docker/volumes/es-plugins/_data`这个目录：
+
+最后，重启es容器：
+```shell
+docker restart es
+```
+
+查看下日志
+```shell
+docker logs -f es
+```
+
+可以看到如下字样
+```log
+"message": "loaded plugin [analysis-ik]" }
+```
+
+
+---
+
+**使用IK分词器**
+
+IK分词器包含两种模式：
+-  `ik_smart`：智能语义切分 
+-  `ik_max_word`：最细粒度切分 
+
+我们在Kibana的DevTools上来测试分词器，首先测试Elasticsearch官方提供的标准分词器：
+```
+POST /_analyze
+{
+  "analyzer": "standard",
+  "text": "黑马程序员学习java太棒了"
+}
+```
+
+```json
+{
+  "tokens" : [
+    {
+      "token" : "黑",
+      "start_offset" : 0,
+      "end_offset" : 1,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 0
+    },
+    {
+      "token" : "马",
+      "start_offset" : 1,
+      "end_offset" : 2,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 1
+    },
+    {
+      "token" : "程",
+      "start_offset" : 2,
+      "end_offset" : 3,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 2
+    },
+    {
+      "token" : "序",
+      "start_offset" : 3,
+      "end_offset" : 4,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 3
+    },
+    {
+      "token" : "员",
+      "start_offset" : 4,
+      "end_offset" : 5,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 4
+    },
+    {
+      "token" : "学",
+      "start_offset" : 5,
+      "end_offset" : 6,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 5
+    },
+    {
+      "token" : "习",
+      "start_offset" : 6,
+      "end_offset" : 7,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 6
+    },
+    {
+      "token" : "java",
+      "start_offset" : 7,
+      "end_offset" : 11,
+      "type" : "<ALPHANUM>",
+      "position" : 7
+    },
+    {
+      "token" : "太",
+      "start_offset" : 11,
+      "end_offset" : 12,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 8
+    },
+    {
+      "token" : "棒",
+      "start_offset" : 12,
+      "end_offset" : 13,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 9
+    },
+    {
+      "token" : "了",
+      "start_offset" : 13,
+      "end_offset" : 14,
+      "type" : "<IDEOGRAPHIC>",
+      "position" : 10
+    }
+  ]
+}
+
+```
+
+可以看到，标准分词器智能1字1词条，无法正确对中文做分词。
+
+我们再测试IK分词器：
+```
+POST /_analyze
+{
+  "analyzer": "ik_smart",
+  "text": "黑马程序员学习java太棒了"
+}
+```
+结果如下
+```json
+{
+  "tokens" : [
+    {
+      "token" : "黑马",
+      "start_offset" : 0,
+      "end_offset" : 2,
+      "type" : "CN_WORD",
+      "position" : 0
+    },
+    {
+      "token" : "程序员",
+      "start_offset" : 2,
+      "end_offset" : 5,
+      "type" : "CN_WORD",
+      "position" : 1
+    },
+    {
+      "token" : "学习",
+      "start_offset" : 5,
+      "end_offset" : 7,
+      "type" : "CN_WORD",
+      "position" : 2
+    },
+    {
+      "token" : "java",
+      "start_offset" : 7,
+      "end_offset" : 11,
+      "type" : "ENGLISH",
+      "position" : 3
+    },
+    {
+      "token" : "太棒了",
+      "start_offset" : 11,
+      "end_offset" : 14,
+      "type" : "CN_WORD",
+      "position" : 4
+    }
+  ]
+}
+
+```
+
+---
+
+```
+POST /_analyze
+{
+  "analyzer": "ik_max_word",
+  "text": "黑马程序员学习java太棒了"
+}
+```
+结果如下
+```json
+{
+  "tokens" : [
+    {
+      "token" : "黑马",
+      "start_offset" : 0,
+      "end_offset" : 2,
+      "type" : "CN_WORD",
+      "position" : 0
+    },
+    {
+      "token" : "程序员",
+      "start_offset" : 2,
+      "end_offset" : 5,
+      "type" : "CN_WORD",
+      "position" : 1
+    },
+    {
+      "token" : "程序",
+      "start_offset" : 2,
+      "end_offset" : 4,
+      "type" : "CN_WORD",
+      "position" : 2
+    },
+    {
+      "token" : "员",
+      "start_offset" : 4,
+      "end_offset" : 5,
+      "type" : "CN_CHAR",
+      "position" : 3
+    },
+    {
+      "token" : "学习",
+      "start_offset" : 5,
+      "end_offset" : 7,
+      "type" : "CN_WORD",
+      "position" : 4
+    },
+    {
+      "token" : "java",
+      "start_offset" : 7,
+      "end_offset" : 11,
+      "type" : "ENGLISH",
+      "position" : 5
+    },
+    {
+      "token" : "太棒了",
+      "start_offset" : 11,
+      "end_offset" : 14,
+      "type" : "CN_WORD",
+      "position" : 6
+    },
+    {
+      "token" : "太棒",
+      "start_offset" : 11,
+      "end_offset" : 13,
+      "type" : "CN_WORD",
+      "position" : 7
+    },
+    {
+      "token" : "了",
+      "start_offset" : 13,
+      "end_offset" : 14,
+      "type" : "CN_CHAR",
+      "position" : 8
+    }
+  ]
+}
+
+```
+
+
+
+---
+
+### **拓展词典**
+
+
+随着互联网的发展，“造词运动”也越发的频繁。出现了很多新的词语，在原有的词汇列表中并不存在。比如：“泰裤辣”，“传智播客” 等。
+```json
+POST /_analyze
+{
+  "analyzer": "ik_max_word",
+  "text": "传智播客开设大学,真的泰裤辣！"
+}
+```
+
+可以看到，传智播客和泰裤辣都无法正确分词。
+
+所以要想正确分词，IK分词器的词库也需要不断的更新，IK分词器提供了扩展词汇的功能。
+
+1）打开IK分词器config目录：`/var/lib/docker/volumes/es-plugins/_data/elasticsearch-analysis-ik-7.12.1/config/`
+
+`IKAnalyzer.cfg.xml`文件
+
+2）在`IKAnalyzer.cfg.xml`配置文件内容添加：
+
+```xml{6}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+	<comment>IK Analyzer 扩展配置</comment>
+	<!--用户可以在这里配置自己的扩展字典 -->
+	<entry key="ext_dict">ext.dic</entry>
+	 <!--用户可以在这里配置自己的扩展停止词字典-->
+	<entry key="ext_stopwords"></entry>
+	<!--用户可以在这里配置远程扩展字典 -->
+	<!-- <entry key="remote_ext_dict">words_location</entry> -->
+	<!--用户可以在这里配置远程扩展停止词字典-->
+	<!-- <entry key="remote_ext_stopwords">words_location</entry> -->
+</properties>
+
+```
+
+
+3）在IK分词器的config目录新建一个 `ext.dic`，可以参考config目录下复制一个配置文件进行修改
+```txt
+传智播客
+泰裤辣
+```
+
+4）重启*elasticsearch*
+
+```shell
+docker restart es
+
+# 查看 日志
+docker logs -f es
+```
+
+再次测试，可以发现传智播客和泰裤辣都正确分词了：
+```json
+{
+  "tokens" : [
+    {
+      "token" : "传智播客",
+      "start_offset" : 0,
+      "end_offset" : 4,
+      "type" : "CN_WORD",
+      "position" : 0
+    },
+    {
+      "token" : "开设",
+      "start_offset" : 4,
+      "end_offset" : 6,
+      "type" : "CN_WORD",
+      "position" : 1
+    },
+    {
+      "token" : "大学",
+      "start_offset" : 6,
+      "end_offset" : 8,
+      "type" : "CN_WORD",
+      "position" : 2
+    },
+    {
+      "token" : "真的",
+      "start_offset" : 9,
+      "end_offset" : 11,
+      "type" : "CN_WORD",
+      "position" : 3
+    },
+    {
+      "token" : "泰裤辣",
+      "start_offset" : 11,
+      "end_offset" : 14,
+      "type" : "CN_WORD",
+      "position" : 4
+    }
+  ]
+}
+
+```
+
+
+---
+
+**总结**
+
+分词器的作用是什么？
+- 创建倒排索引时，对文档分词
+- 用户搜索时，对输入的内容分词
+
+IK分词器有几种模式？
+- `ik_smart`：智能切分，粗粒度
+- `ik_max_word`：最细切分，细粒度IK分词器
+
+如何拓展分词器词库中的词条？
+- 利用`config`目录的`IkAnalyzer.cfg.xml`文件添加拓展词典
+- 在词典中添加拓展词条
+
+
+
+
+
+## 基础概念
+
+索引（index）：相同类型的文档的集合
+
+映射（mapping）：索引中文档的字段约束信息，类似表的结构约束
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/wechat_2025-06-11_222039_990.png)
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-11_22-25-52.png)
+`Index`就类似数据库表，`Mapping`映射就类似表的结构。我们要向`es`中存储数据，必须先创建`Index`和`Mapping`
