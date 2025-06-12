@@ -649,9 +649,9 @@ IK分词器有几种模式？
 
 
 
+## 索引库操作
 
-
-## 基础概念
+### 基础概念
 
 索引（index）：相同类型的文档的集合
 
@@ -660,3 +660,241 @@ IK分词器有几种模式？
 
 ![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-11_22-25-52.png)
 `Index`就类似数据库表，`Mapping`映射就类似表的结构。我们要向`es`中存储数据，必须先创建`Index`和`Mapping`
+
+
+### Mapping映射属性
+
+Mapping是对索引库中文档的约束，常见的Mapping属性包括：
+- `type`：字段数据类型，常见的简单类型有： 
+  - 字符串：text（可分词的文本）、keyword（精确值，例如：品牌、国家、ip地址）
+  - 数值：long、integer、short、byte、double、float、
+  - 布尔：boolean
+  - 日期：date
+  - 对象：object
+- `index`：是否创建索引，默认为`true`
+- `analyzer`：使用哪种分词器
+- `properties`：该字段的子字段
+
+例如下面的json文档：
+
+```json
+{
+    "age": 21,
+    "weight": 52.1,
+    "isMarried": false,
+    "info": "黑马程序员Java讲师",
+    "email": "zy@itcast.cn",
+    "score": [99.1, 99.5, 98.9],
+    "name": {
+        "firstName": "云",
+        "lastName": "赵"
+    }
+}
+```
+
+:::info
+- score是float类型
+- 如果对score进行排序，排序时，ES很智能，降序选取值最大的，升序选取值最小的
+- 是否需要创建索引，要看该字段是否需要搜索和排序
+:::
+
+### 索引库的CRUD
+
+由于Elasticsearch采用的是`Restful`风格的API，因此其请求方式和路径相对都比较规范，而且请求参数也都采用JSON风格。
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-12_21-27-08.png)
+
+#### 创建索引库和映射
+
+**基本语法：**
+- 请求方式：PUT
+- 请求路径：/索引库名，可以自定义
+- 请求参数：mapping映射
+
+格式：
+```json
+PUT /索引库名称
+{
+  "mappings": {
+    "properties": {
+      "字段名":{
+        "type": "text",
+        "analyzer": "ik_smart"
+      },
+      "字段名2":{
+        "type": "keyword",
+        "index": "false"
+      },
+      "字段名3":{
+        "properties": {
+          "子字段": {
+            "type": "keyword"
+          }
+        }
+      },
+      // ...略
+    }
+  }
+}
+```
+
+
+示例：
+```json
+PUT /heima
+{
+  "mappings": {
+    "properties": {
+      "info":{
+        "type":"text",
+        "analyzer": "ik_smart"
+      },
+      "age":{
+        "type": "byte"
+      },
+      "email":{
+        "type": "keyword",
+        "index": false
+      },
+      "name":{
+        "type": "object", 
+        "properties": {
+          "firstName":{
+            "type":"keyword"
+          },
+          "lastName":{
+            "type":"keyword"
+          }
+        }
+      }
+    }
+  }
+}
+```
+执行结果
+```json
+{
+  "acknowledged" : true,
+  "shards_acknowledged" : true,
+  "index" : "heima"
+}
+
+```
+
+
+#### 查询索引库
+
+**基本语法：**
+-  请求方式：GET 
+-  请求路径：/索引库名 
+-  请求参数：无 
+
+格式：
+```
+GET /索引库名
+```
+示例：
+```
+GET /heima
+```
+
+
+#### 删除索引库
+
+**语法：**
+-  请求方式：DELETE 
+-  请求路径：/索引库名 
+-  请求参数：无 
+
+格式：
+```
+DELETE /索引库名
+```
+示例
+```
+DELETE /heima
+```
+
+---
+
+#### 修改索引库
+
+倒排索引结构虽然不复杂，但是一旦数据结构改变（比如改变了分词器），就需要重新创建倒排索引，这简直是灾难。因此索引库**一旦创建，无法修改mapping**。
+
+虽然无法修改mapping中已有的字段，但是却允许添加新的字段到mapping中，因为不会对倒排索引产生影响。因此修改索引库能做的就是向索引库中添加新字段，或者更新索引库的基础属性。
+
+**语法说明：**
+```json
+PUT /索引库名/_mapping
+{
+  "properties": {
+    "新字段名":{
+      "type": "integer"
+    }
+  }
+}
+```
+
+**示例：**
+```json
+PUT /heima/_mapping
+{
+  "properties": {
+    "age":{
+      "type": "integer"
+    }
+  }
+}
+```
+
+```json
+PUT /heima/_mapping
+{
+  "properties":{
+    "otherInfo":{
+      "type":"text"
+    }
+  }
+}
+```
+
+---
+
+**总结**
+
+索引库操作有哪些？
+- 创建索引库：PUT /索引库名
+- 查询索引库：GET /索引库名
+- 删除索引库：DELETE /索引库名
+- 修改索引库，添加字段：PUT /索引库名/_mapping
+
+可以看到，对索引库的操作基本遵循的Restful的风格，因此API接口非常统一，方便记忆。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
