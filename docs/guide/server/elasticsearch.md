@@ -870,26 +870,709 @@ PUT /heima/_mapping
 
 可以看到，对索引库的操作基本遵循的Restful的风格，因此API接口非常统一，方便记忆。
 
+---
+
+### 文档CRUD
+
+有了索引库，接下来就可以向索引库中添加数据了。
+
+#### 新增文档
+语法：
+```json
+POST /索引库名/_doc/文档id
+{
+    "字段1": "值1",
+    "字段2": "值2",
+    "字段3": {
+        "子属性1": "值3",
+        "子属性2": "值4"
+    },
+}
+```
+示例：
+```json
+POST /heima/_doc/1
+{
+  "info": "zxyang study java",
+    "email": "zzyang.cn",
+    "name": {
+        "firstName": "云",
+        "lastName": "赵"
+    }
+}
+```
+响应结果：
+```json
+{
+  "_index" : "heima",
+  "_type" : "_doc",
+  "_id" : "1",
+  "_version" : 1,
+  "result" : "created",
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "_seq_no" : 0,
+  "_primary_term" : 2
+}
+
+// 下划线代表内置变量，跟Python类似
+```
 
 
+#### 查询文档
+
+根据`Restful`风格，新增是post，查询应该是get，不过查询一般都需要条件，这里我们把文档id带上。
+```json
+GET /{索引库名称}/_doc/{id}
+```
+示例：
+```json
+GET /heima/_doc/1
+```
+响应
+```json
+{
+  "_index" : "heima",
+  "_type" : "_doc",
+  "_id" : "1",
+  "_version" : 1,
+  "_seq_no" : 0,
+  "_primary_term" : 2,
+  "found" : true,
+  "_source" : {
+    "info" : "zxyang study java",
+    "email" : "zzyang.cn",
+    "name" : {
+      "firstName" : "云",
+      "lastName" : "赵"
+    }
+  }
+}
+```
 
 
+#### 删除文档
+
+删除使用DELETE请求，同样，需要根据id进行删除：
+
+```json
+DELETE /{索引库名}/_doc/id值
+```
+示例：
+```json
+DELETE /heima/_doc/1
+```
+
+响应:
+```json
+{
+  "_index" : "heima",
+  "_type" : "_doc",
+  "_id" : "1",
+  "_version" : 2,
+  "result" : "deleted",
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "_seq_no" : 1,
+  "_primary_term" : 2
+}
+
+```
+
+#### 修改文档
+
+修改有两种方式：
+- 全量修改：直接覆盖原来的文档
+- 局部修改：修改文档中的部分字段
+
+##### 全量修改
+
+全量修改，会删除旧文档，添加新文档
+
+全量修改是覆盖原来的文档，其本质是两步操作：
+- 根据指定的id删除文档
+- 新增一个相同id的文档
+>注意：如果根据id删除时，id不存在，第二步的新增也会执行，也就从修改变成了新增操作了。
+
+**语法：**
+```json
+PUT /{索引库名}/_doc/文档id
+{
+    "字段1": "值1",
+    "字段2": "值2",
+    // ... 略
+}
+```
+
+示例：
+```json
+PUT /heima/_doc/1
+{
+  "info": "zxyang STUDY java",
+    "email": "ZZyang.cn",
+    "name": {
+        "firstName": "云",
+        "lastName": "赵"
+    }
+}
+```
+响应：
+```json
+{
+  "_index" : "heima",
+  "_type" : "_doc",
+  "_id" : "1",
+  "_version" : 2,
+  "result" : "updated",
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "_seq_no" : 3,
+  "_primary_term" : 2
+}
+
+```
 
 
+##### 局部修改
+也叫**增量修改**，
+局部修改是只修改指定id匹配的文档中的部分字段。
+
+**语法：**
+```json
+POST /{索引库名}/_update/文档id
+{
+    "doc": {
+         "字段名": "新的值",
+    }
+}
+```
 
 
+**示例：**
+```json
+POST /heima/_update/1
+{
+  "doc": {
+    "email": "aaaa.cc"
+  }
+}
+```
+响应：
+```json
+{
+  "_index" : "heima",
+  "_type" : "_doc",
+  "_id" : "1",
+  "_version" : 3,
+  "result" : "updated",
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "_seq_no" : 4,
+  "_primary_term" : 2
+}
+
+```
+
+>注意：不要使用全量修改的方式去修改部分字段，这样会导致修改后的数据，字段仅剩你修改的那一个了
 
 
+---
+**总结**
+
+文档操作有哪些？
+- 创建文档：`POST /{索引库名}/_doc/文档id{ json文档 }`
+- 查询文档：`GET /{索引库名}/_doc/文档id`
+- 删除文档：`DELETE /{索引库名}/_doc/文档id`
+- 修改文档： 
+  - 全量修改：`PUT /{索引库名}/_doc/文档id { json文档 }`
+  - 局部修改：`POST /{索引库名}/_update/文档id { "doc": {字段}}`
 
 
+#### 批量处理
+
+批处理采用POST请求，基本语法如下：
+```json
+POST _bulk
+{ "index" : { "_index" : "test", "_id" : "1" } }
+{ "field1" : "value1" }
+{ "delete" : { "_index" : "test", "_id" : "2" } }
+{ "create" : { "_index" : "test", "_id" : "3" } }
+{ "field1" : "value3" }
+{ "update" : {"_id" : "1", "_index" : "test"} }
+{ "doc" : {"field2" : "value2"} }
+```
+
+索引操作（Index）效果：如果文档 ID=1 已存在，则替换它；如果不存在，则创建新文档
+
+删除操作（Delete）效果： 删除 ID=2 的文档（如果存在）
+
+创建操作（Create）效果：创建 ID=3 的新文档，如果该 ID 已存在，则操作会失败(报错)
+
+更新操作（Update）效果：对 ID=1 的文档进行部分更新
+
+这里的`test`是目标索引库
+- `_index`：指定索引库名
+- `_id`指定要操作的文档`id`
+
+---
+
+**示例，批量新增：**
+```json
+POST /_bulk
+{"index": {"_index":"heima", "_id": "3"}}
+{"info": "黑马程序员C++讲师", "email": "ww@itcast.cn", "name":{"firstName": "五", "lastName":"王"}}
+{"index": {"_index":"heima", "_id": "4"}}
+{"info": "黑马程序员前端讲师", "email": "zhangsan@itcast.cn", "name":{"firstName": "三", "lastName":"张"}}
+```
+:::warning
+注意这里的新增信息，不能换行
+:::
+
+批量删除：
+
+```json
+POST /_bulk
+{"delete":{"_index":"heima", "_id": "3"}}
+{"delete":{"_index":"heima", "_id": "4"}}
+```
+
+---
+
+### RestClient
+
+ES官方提供了各种不同语言的客户端，用来操作ES。这些客户端的本质就是组装DSL语句，通过http请求发送给ES。
+
+官方文档地址：
+https://www.elastic.co/guide/en/elasticsearch/client/index.html
+
+由于ES目前最新版本是8.8，提供了全新版本的客户端，老版本的客户端已经被标记为过时。而我们采用的是`7.12版本`
 
 
+<details>
+  <summary>注意</summary>
+  7.15以后的新版本都是基于lambda表达式的写法了；项目中用新版本的注意下；
+</details>
+
+#### 初始化RestClient
+在`elasticsearch`提供的API中，与`elasticsearch`一切交互都封装在一个名为`RestHighLevelClient`的类中，必须先完成这个对象的初始化，建立与`elasticsearch`的连接。
 
 
+1）在item-service模块中引入es的RestHighLevelClient依赖：
+```xml
+<dependency>
+    <groupId>org.elasticsearch.client</groupId>
+    <artifactId>elasticsearch-rest-high-level-client</artifactId>
+</dependency>
+```
+
+2）因为SpringBoot默认的ES版本是7.17.10，所以我们需要覆盖默认的ES版本：
+
+在父工程hmall的pom.xml中覆盖
+```xml
+  <properties>
+      <maven.compiler.source>11</maven.compiler.source>
+      <maven.compiler.target>11</maven.compiler.target>
+      <elasticsearch.version>7.12.1</elasticsearch.version>
+  </properties>
+```
+3）初始化RestHighLevelClient：
+
+初始化的代码如下：
+```java
+RestHighLevelClient client = new RestHighLevelClient(RestClient.builder(
+        HttpHost.create("http://192.168.150.101:9200")
+));
+```
 
 
+在该服务下建一个测试，测试一下
+```java
+public class ElasticSearchTest {
+
+    private RestHighLevelClient restHighLevelClient;
+
+    @Test
+    void testConnection() {
+        System.out.println(restHighLevelClient);
+    }
+
+    @BeforeEach
+    void setUp() {
+        restHighLevelClient = new RestHighLevelClient(RestClient.builder(
+                HttpHost.create("http://192.168.146.131:9200")
+        ));
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        if (restHighLevelClient != null) {
+            restHighLevelClient.close();
+        }
+    }
+}
+```
+
+假如是集群部署，可以多节点配置​​
+```java
+restHighLevelClient = new RestHighLevelClient(
+    RestClient.builder(
+        new HttpHost("192.168.146.131", 9200, "http"),
+        new HttpHost("192.168.146.132", 9200, "http")
+    )
+);
+```
+
+:::info
+- `@BeforeEach`初始化方法, 表示该方法在每个测试方法执行前都会运行
+- `@AfterEach` 表示该方法在每个测试方法执行后都会运行
+:::
 
 
+#### 商品的Mapping映射
+
+由于要实现对商品搜索，所以我们需要将商品添加到Elasticsearch中，不过需要根据搜索业务的需求来设定索引库结构，而不是一股脑的把MySQL数据写入Elasticsearch.
+
+
+实现搜索功能需要的字段包括三大部分：
+- 搜索过滤字段
+  - 分类
+  - 品牌
+  - 价格
+- 排序字段
+  - 默认：按照更新时间降序排序
+  - 销量
+  - 价格
+- 展示字段
+  - 商品id：用于点击后跳转
+  - 图片地址
+  - 是否是广告推广商品
+  - 名称
+  - 价格
+  - 评价数量
+  - 销量
+
+也就是页面上展示的这些，都要存到es中
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-15_19-49-47.png)
+
+结合数据库表结构，以上字段对应的mapping映射属性如下：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-15_19-56-44.png)
+
+因此，最终我们的索引库文档结构应该是这样：
+
+```json
+PUT /items
+{
+  "mappings": {
+    "properties": {
+      "id": {
+        "type": "keyword"
+      },
+      "name":{
+        "type": "text",
+        "analyzer": "ik_max_word"
+      },
+      "price":{
+        "type": "integer"
+      },
+      "image":{
+        "type": "keyword",
+        "index": false
+      },
+      "category":{
+        "type": "keyword"
+      },
+      "brand":{
+        "type": "keyword"
+      },
+      "sold":{
+        "type": "integer"
+      },
+      "commentCount":{
+        "type": "integer",
+        "index": false
+      },
+      "isAD":{
+        "type": "boolean"
+      },
+      "updateTime":{
+        "type": "date"
+      }
+    }
+  }
+}
+```
+
+#### 索引库操作
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-15_20-32-21.png)
+代码分为三步：
+- 1）创建Request对象。
+  - 因为是创建索引库的操作，因此Request是CreateIndexRequest。
+- 2）添加请求参数
+  - 其实就是Json格式的Mapping映射参数。因为json字符串很长，这里是定义了静态字符串常量MAPPING_TEMPLATE，让代码看起来更加优雅。
+- 3）发送请求
+  - client.indices()方法的返回值是IndicesClient类型，封装了所有与索引库操作有关的方法。例如创建索引、删除索引、判断索引是否存在等
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-15_20-34-34.png)
+
+
+**创建索引库及mapping映射：**
+```java{25-32}
+public class ElasticSearchTest {
+
+    private RestHighLevelClient restHighLevelClient;
+
+    @Test
+    void testConnection() {
+        System.out.println(restHighLevelClient);
+    }
+
+    @BeforeEach
+    void setUp() {
+        restHighLevelClient = new RestHighLevelClient(RestClient.builder(
+                HttpHost.create("http://192.168.146.131:9200")
+        ));
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        if (restHighLevelClient != null) {
+            restHighLevelClient.close();
+        }
+    }
+
+    @Test
+    void testCreateIndex() throws IOException {
+        // 1.准备request对象
+        CreateIndexRequest request = new CreateIndexRequest("items");
+        // 2.准备请求参数
+        request.source(MAPPING_TEMPLATE, XContentType.JSON);
+        // 3.发送请求
+        restHighLevelClient.indices().create(request, RequestOptions.DEFAULT);
+    }
+
+    private final static String MAPPING_TEMPLATE = "{\n" +
+            "  \"mappings\": {\n" +
+            "    \"properties\": {\n" +
+            "      \"id\": {\n" +
+            "        \"type\": \"keyword\"\n" +
+            "      },\n" +
+            "      \"name\":{\n" +
+            "        \"type\": \"text\",\n" +
+            "        \"analyzer\": \"ik_max_word\"\n" +
+            "      },\n" +
+            "      \"price\":{\n" +
+            "        \"type\": \"integer\"\n" +
+            "      },\n" +
+            "      \"image\":{\n" +
+            "        \"type\": \"keyword\",\n" +
+            "        \"index\": false\n" +
+            "      },\n" +
+            "      \"category\":{\n" +
+            "        \"type\": \"keyword\"\n" +
+            "      },\n" +
+            "      \"brand\":{\n" +
+            "        \"type\": \"keyword\"\n" +
+            "      },\n" +
+            "      \"sold\":{\n" +
+            "        \"type\": \"integer\"\n" +
+            "      },\n" +
+            "      \"commentCount\":{\n" +
+            "        \"type\": \"integer\",\n" +
+            "        \"index\": false\n" +
+            "      },\n" +
+            "      \"isAD\":{\n" +
+            "        \"type\": \"boolean\"\n" +
+            "      },\n" +
+            "      \"updateTime\":{\n" +
+            "        \"type\": \"date\"\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}";
+}
+```
+
+**查询索引库**
+
+```java
+    @Test
+    void testGetIndex() throws IOException {
+        // 1.准备request对象
+        GetIndexRequest request = new GetIndexRequest("items");
+        // 3.发送请求
+        GetIndexResponse getIndexResponse = restHighLevelClient.indices().get(request, RequestOptions.DEFAULT);
+        System.out.println(getIndexResponse);
+    }
+```
+检查是否存在：
+```java
+    @Test
+    void testGetIndex() throws IOException {
+        // 1.准备request对象
+        GetIndexRequest request = new GetIndexRequest("items");
+        // 3.发送请求
+        boolean exists = restHighLevelClient.indices().exists(request, RequestOptions.DEFAULT);
+        System.out.println(exists);
+    }
+```
+- 1）创建Request对象。这次是`GetIndexRequest`对象
+- 2）准备参数。这里是无参，直接省略
+- 3）发送请求。改用exists方法
+
+**删除索引库**
+
+```java
+    @Test
+    void testDeleteIndex() throws IOException {
+        // 1.准备request对象
+        DeleteIndexRequest request = new DeleteIndexRequest("items");
+        // 3.发送请求
+        restHighLevelClient.indices().delete(request, RequestOptions.DEFAULT);
+    }
+```
+注意体现在Request对象上。流程如下：
+- 1）创建Request对象。这次是`DeleteIndexRequest`对象
+- 2）准备参数。这里是无参，因此省略
+- 3）发送请求。改用delete方法
+
+---
+
+**总结**
+
+`JavaRestClient`操作elasticsearch的流程基本类似。核心是`client.indices()`方法来获取索引库的操作对象。
+索引库操作的基本步骤：
+- 初始化`RestHighLevelClient`
+- 创建XxxIndexRequest。XXX是`Create、Get、Delete`
+- 准备请求参数（ Create时需要，其它是无参，可以省略）
+- 发送请求。调用`RestHighLevelClient#indices().xxx()`方法，xxx是create、exists、delete
+
+---
+
+#### RestClient操作文档
+索引库准备好以后，就可以操作文档了。为了与索引库操作分离，我们再次创建一个测试类
+
+
+##### 新增文档
+
+索引库结构与数据库结构还存在一些差异，因此我们要定义一个索引库结构对应的实体。
+
+在item-service模块的com.hmall.item.domain.po包中定义一个新的：`ItemDoc`
+```java
+package com.hmall.item.domain.po;
+
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+@ApiModel(description = "索引库实体")
+public class ItemDoc{
+
+    @ApiModelProperty("商品id")
+    private String id;
+
+    @ApiModelProperty("商品名称")
+    private String name;
+
+    @ApiModelProperty("价格（分）")
+    private Integer price;
+
+    @ApiModelProperty("商品图片")
+    private String image;
+
+    @ApiModelProperty("类目名称")
+    private String category;
+
+    @ApiModelProperty("品牌名称")
+    private String brand;
+
+    @ApiModelProperty("销量")
+    private Integer sold;
+
+    @ApiModelProperty("评论数")
+    private Integer commentCount;
+
+    @ApiModelProperty("是否是推广广告，true/false")
+    private Boolean isAD;
+
+    @ApiModelProperty("更新时间")
+    private LocalDateTime updateTime;
+}
+```
+
+测试类代码如下：
+```java{25-36}
+@SpringBootTest(properties = "spring.profiles.active=local")
+public class ElasticSearchDocumentTest {
+
+    private RestHighLevelClient restHighLevelClient;
+
+    @Autowired
+    private IItemService itemService;
+
+
+    @BeforeEach
+    void setUp() {
+        restHighLevelClient = new RestHighLevelClient(RestClient.builder(
+                HttpHost.create("http://192.168.146.131:9200")
+        ));
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        if (restHighLevelClient != null) {
+            restHighLevelClient.close();
+        }
+    }
+
+    @Test
+    void testIndexDoc() throws IOException {
+        // 0.准备文档数据
+        Item item = itemService.getById(546872L);
+        // 把数据库数据转为文档数据
+        ItemDoc itemDoc = BeanUtil.copyProperties(item, ItemDoc.class);
+        // 1. 准备request
+        IndexRequest request = new IndexRequest("items").id(item.getId().toString());
+        // 2.准备请求参数
+        request.source(JSONUtil.toJsonStr(itemDoc), XContentType.JSON);
+        // 3.发送请求
+        restHighLevelClient.index(request, RequestOptions.DEFAULT);
+    }
+}
+```
+
+可以看到与索引库操作的API非常类似，同样是三步走：
+- 1）创建Request对象，这里是`IndexRequest`，因为添加文档就是创建倒排索引的过程
+- 2）准备请求参数，本例中就是Json文档
+- 3）发送请求
+
+变化的地方在于，这里直接使用`client.xxx()`的API，不再需要`client.indices()`了。
+
+
+:::info
+`new IndexRequest`这里的Index会先判断这个id是否存在，如果存在就会update，如果不存在就会create，并且这个id是可以不指定的，会自动创建
+
+`@SpringBootTest`，这是 Spring Boot 测试的核心注解，它会：​启动完整的 Spring 应用上下文​​（包括所有自动配置的 bean）、​模拟真实的应用程序启动过程​​、​​ 提供测试所需的完整环境​​（包括配置属性、数据库连接等）、支持依赖注入​​（可以使用 @Autowired 注入任何 Spring 管理的 bean）
+
+`properties 参数`，这会加载`application-local.yml` 配置文件，即使应用默认配置中设置了其他 profile，测试时也会强制使用 "local" profile
+
+`BeanUtil.copyProperties`(hutool) 根据一个已有的 Java Bean 对象（item），创建一个新的 ItemDoc 类型的对象，并将属性名相同的字段值复制过去。
+:::
 
 
 
