@@ -1466,6 +1466,16 @@ public class ElasticSearchTest {
 
 
 ##### 新增文档
+新增文档的请求语法如下：
+```json
+POST /{索引库名}/_doc/1
+{
+    "name": "Jack",
+    "age": 21
+}
+```
+对应的JavaAPI如下：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_19-44-12.png)
 
 索引库结构与数据库结构还存在一些差异，因此我们要定义一个索引库结构对应的实体。
 
@@ -1569,14 +1579,427 @@ public class ElasticSearchDocumentTest {
 
 `@SpringBootTest`，这是 Spring Boot 测试的核心注解，它会：​启动完整的 Spring 应用上下文​​（包括所有自动配置的 bean）、​模拟真实的应用程序启动过程​​、​​ 提供测试所需的完整环境​​（包括配置属性、数据库连接等）、支持依赖注入​​（可以使用 @Autowired 注入任何 Spring 管理的 bean）
 
-`properties 参数`，这会加载`application-local.yml` 配置文件，即使应用默认配置中设置了其他 profile，测试时也会强制使用 "local" profile
+`properties = "spring.profiles.active=local" 参数`，这会加载`application-local.yml` 配置文件，即使应用默认配置中设置了其他 profile，测试时也会强制使用 "local" profile
 
 `BeanUtil.copyProperties`(hutool) 根据一个已有的 Java Bean 对象（item），创建一个新的 ItemDoc 类型的对象，并将属性名相同的字段值复制过去。
 :::
 
 
+##### 查询文档
+```json
+GET /{索引库名}/_doc/{id}
+```
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_20-17-21.png)
 
 
+```java
+    @Test
+    void testGetDoc() throws IOException {
+        // 1. 准备request
+        GetRequest request = new GetRequest("items", "546872");
+        // 2.发送请求
+        GetResponse response = restHighLevelClient.get(request, RequestOptions.DEFAULT);
+        // 3.解析结果
+        String json = response.getSourceAsString();
+        ItemDoc doc = JSONUtil.toBean(json, ItemDoc.class);
+        System.out.println("doc = " + doc);
+    }
+```
+- 1）准备Request对象。这次是查询，所以是GetRequest
+- 2）发送请求，得到结果。因为是查询，这里调用client.get()方法
+- 3）解析结果，就是对JSON做反序列化
+
+---
+
+##### 删除文档
+删除的请求语句如下：
+```json
+DELETE /hotel/_doc/{id}
+```
+对应API：
+```java
+    @Test
+    void testDeleteDoc() throws IOException {
+        // 1. 准备request
+        DeleteRequest request = new DeleteRequest("items", "546872");
+        // 2.发送请求
+        restHighLevelClient.delete(request, RequestOptions.DEFAULT);
+    }
+```
+
+##### 修改文档
+
+修改文档数据有两种方式：
+- 方式一：全量更新。再次写入id一样的文档，就会删除旧文档，添加新文档。与新增的JavaAPI一致。
+- 方式二：局部更新。只更新指定部分字段。
+
+
+**全量更新**
+
+全量更新和新增是一样的操作API，如果这个id的数据存在则修改，不存在则添加
+
+```java{7}
+    @Test
+    void testIndexDoc() throws IOException {
+        // 0.准备文档数据
+        Item item = itemService.getById(546872L);
+        // 把数据库数据转为文档数据
+        ItemDoc itemDoc = BeanUtil.copyProperties(item, ItemDoc.class);
+        itemDoc.setPrice(9999999);
+        // 1. 准备request
+        IndexRequest request = new IndexRequest("items").id(item.getId().toString());
+        // 2.准备请求参数
+        request.source(JSONUtil.toJsonStr(itemDoc), XContentType.JSON);
+        // 3.发送请求
+        IndexResponse response = restHighLevelClient.index(request, RequestOptions.DEFAULT);
+        System.out.println("response = " + response);
+    }
+```
+
+**局部更新**
+```json
+POST /{索引库名}/_update/{id}
+{
+  "doc": {
+    "字段名": "字段值",
+    "字段名": "字段值"
+  }
+}
+```
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_20-48-13.png)
+```java
+    @Test
+    void testUpdateDoc() throws IOException {
+        // 1. 准备request
+        UpdateRequest request = new UpdateRequest("items", "546872");
+        // 2. 准备请求参数 
+        request.doc(  // 这里也可以用Map
+                "price", "666",
+                "sold", "36"
+        );
+        // 3.发送请求
+        restHighLevelClient.update(request, RequestOptions.DEFAULT);
+    }
+```
+
+---
+
+
+**文档操作的基本步骤：**
+- 初始化RestHighLevelClient
+- 创建XxxRequest。XXX是Index、Get、Update、Delete
+- 准备参数（Index和Update时需要）
+- 发送请求。调用RestHighLevelClient#.xxx()方法，xxx是index、get、update、delete
+- 解析结果（Get时需要）
+
+---
+
+#### 批处理
+
+
+批处理与前面讲的文档的CRUD步骤基本一致：
+- 创建`Request`，但这次用的是`BulkRequest`
+- 准备请求参数
+- 发送请求，这次要用到`client.bulk()`方法
+
+`BulkRequest`本身其实并没有请求参数，其本质就是将多个普通的CRUD请求组合在一起发送。例如：
+- 批量新增文档，就是给每个文档创建一个`IndexRequest`请求，然后封装到`BulkRequest`中，一起发出。
+- 批量删除，就是创建N个`DeleteRequest`请求，然后封装到`BulkRequest`，一起发出
+
+因此`BulkRequest`中提供了add方法，用以添加其它CRUD的请求：
+
+可以看到，能添加的请求有：
+- `IndexRequest`，也就是新增
+- `UpdateRequest`，也就是修改
+- `DeleteRequest`，也就是删除
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_21-17-10.png)
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_21-16-28.png)
+
+当我们要导入商品数据时，由于商品数量达到数十万，因此不可能一次性全部导入。建议采用循环遍历方式，每次导入1000条左右的数据。
+```java
+    @Test
+    void testBulkDoc() throws IOException {
+        int pageNo = 1, pageSize = 500;
+        // 准备文档数据
+        while (true) {
+            Page<Item> page = itemService.lambdaQuery()
+                    .eq(Item::getStatus, 1)
+                    .page(Page.of(pageNo, pageSize));
+            List<Item> records = page.getRecords();
+            if (records == null || records.isEmpty()) {
+                return;
+            }
+
+            // 1. 准备request
+            BulkRequest request = new BulkRequest();
+            // 2. 准备请求参数
+            for (Item item : records) {
+                request.add(new IndexRequest("items")
+                        .id(item.getId().toString())
+                        .source(JSONUtil.toJsonStr(BeanUtil.copyProperties(item, ItemDoc.class)), XContentType.JSON));
+            }
+            request.add(new DeleteRequest("items").id("1"));
+            // 3.发送请求
+            restHighLevelClient.bulk(request, RequestOptions.DEFAULT);
+            pageNo++;
+        }
+    }
+```
+查看索引库有多少条文档数据：
+```json
+GET items/_count
+```
+
+### DSL查询
+
+我们来研究下elasticsearch的数据搜索功能。Elasticsearch提供了基于JSON的DSL[(Domain Specific Language)](https://www.elastic.co/guide/en/elasticsearch/reference/7.12/query-dsl.html)语句来定义查询条件，其JavaAPI就是在组织DSL条件。
+
+因此，我们先学习DSL的查询语法，然后再基于DSL来对照学习JavaAPI，就会事半功倍。
+
+
+Elasticsearch的查询可以分为两大类：
+- **叶子查询（Leaf query clauses）**：一般是在特定的字段里查询特定值，属于简单查询，很少单独使用。
+- **复合查询（Compound query clauses）**：以逻辑方式组合多个叶子查询或者更改叶子查询的行为方式。
+
+在查询以后，还可以对查询的结果做处理，包括：
+- 排序：按照1个或多个字段值做排序
+- 分页：根据from和size做分页，类似MySQL
+- 高亮：对搜索结果中的关键字添加特殊样式，使其更加醒目
+- 聚合：对搜索结果做数据统计以形成报表
+
+
+#### 快速入门
+
+我们依然在Kibana的DevTools中学习查询的DSL语法。首先来看查询的语法结构：
+```json
+GET /{索引库名}/_search
+{
+  "query": {
+    "查询类型": {
+      // .. 查询条件
+    }
+  }
+}
+```
+说明：
+- `GET /{索引库名}/_search`：其中的_search是固定路径，不能修改
+
+例如，我们以最简单的无条件查询为例，无条件查询的类型是：match_all，因此其查询语句如下：
+```json
+GET /items/_search
+{
+  "query": {
+    "match_all": {
+      
+    }
+  }
+}
+```
+由于match_all无条件，所以条件位置不写即可。
+
+执行结果如下：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_22-07-10.png)
+你会发现虽然是`match_all`，但是响应结果中并不会包含索引库中的所有文档，而是仅有`10条`。这是因为处于安全考虑，`elasticsearch`设置了默认的查询页数。
+
+
+#### 叶子查询
+
+叶子查询还可以进一步细分，常见的有：
+- **全文检索**（full text）查询：利用分词器对用户输入内容分词，然后去词条列表中匹配。例如：
+  - `match_query`
+  - `multi_match_query`
+- **精确查询**：不对用户输入内容分词，直接精确匹配，一般是查找keyword、数值、日期、布尔等类型。例如：
+  - `ids`
+  - `range`
+  - `term`
+- **地理（geo）查询**：用于搜索地理位置，搜索方式很多。例如：
+  - `geo_distance`
+  - `geo_bounding_box`
+
+
+
+---
+
+##### 全文检索查询
+
+全文检索的种类也很多，详情可以参考官方文档：https://www.elastic.co/guide/en/elasticsearch/reference/7.12/full-text-queries.html
+
+以全文检索中的match为例，语法如下：
+```json
+GET /{索引库名}/_search
+{
+  "query": {
+    "match": {
+      "字段名": "搜索条件"
+    }
+  }
+}
+```
+
+示例
+```json
+GET items/_search
+{
+  "query": {
+    "match": {
+      "name": "脱脂牛奶"
+    }
+  }
+}
+```
+响应结果：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-16_22-43-54.png)
+
+::: tip
+基础相关性评分（_score）：
+按照匹配度打分排名，相关度评分是基于BM25（Best Matching 25）算法来计算的，这是一种改进的TF-IDF（Term Frequency-Inverse Document Frequency）算法。
+:::
+
+---
+
+与`match`类似的还有`multi_match`，区别在于可以同时对多个字段搜索，条件是或的关系，满足 (字段1 有 搜索条件) || (字段2 有 搜索条件) 就会被搜索出来，语法示例：
+
+```json
+GET /{索引库名}/_search
+{
+  "query": {
+    "multi_match": {
+      "query": "搜索条件",
+      "fields": ["字段1", "字段2"]
+    }
+  }
+}
+```
+
+- `​query`​​：要搜索的文本内容;
+- `fields`​​：要在哪些字段中搜索该内容
+- 在 `multi_match` 查询的 `fields` 参数中，字段之间的关系是 **​​"或"（OR）关系**​​，而不是"与"（AND）关系。
+
+
+示例：
+```json
+GET items/_search
+{
+  "query": {"multi_match": {
+    "query": "小米",
+    "fields": ["name","brand"]
+  }}
+}
+```
+
+
+---
+
+##### 精确查询
+
+**精确查询**，英文是`Term-level query`，顾名思义，词条级别的查询。也就是说不会对用户输入的搜索条件再分词，而是作为一个词条，与搜索的字段内容精确值匹配。
+
+因此推荐查找keyword、数值、日期、boolean类型的字段。例如id、price、城市、地名、人名等作为一个整体才有含义的字段。
+
+详情可以查看官方文档：[es文档](https://www.elastic.co/guide/en/elasticsearch/reference/7.12/term-level-queries.html)
+
+以**term查询**为例，其语法如下：
+```json
+GET /{索引库名}/_search
+{
+  "query": {
+    "term": {
+      "字段名": {
+        "value": "搜索条件"
+      }
+    }
+  }
+}
+```
+示例:
+```json
+GET items/_search
+{
+  "query": {
+    "term": {
+      "brand": {
+        "value": "德亚"
+      }
+    }
+  }
+}
+```
+:::warning
+当你输入的搜索条件不是词条，而是短语时，由于不做分词，你反而搜索不到！
+:::
+
+---
+
+再来看下**range查询**，语法如下：
+```json
+GET /{索引库名}/_search
+{
+  "query": {
+    "range": {
+      "字段名": {
+        "gte": {最小值},
+        "lte": {最大值}
+      }
+    }
+  }
+}
+```
+
+range是范围查询，对于范围筛选的关键字有：
+- gte：大于等于
+- gt：大于
+- lte：小于等于
+- lt：小于
+
+示例：
+```json
+GET items/_search
+{
+  "query": {
+    "range": {
+      "price": {
+        "gte": 10000,
+        "lte": 20000
+      }
+    }
+  }
+}
+```
+
+
+---
+
+**根据ids查询**
+```json
+GET /items/_search
+{
+  "query": {
+    "ids": {
+      "values": [
+        "613358",
+        "584392"
+      ]
+    }
+  }
+}
+```
+
+:::warning
+需要注意的是精确搜索是没有得分的，没有分数排名，因为是精确搜索，大家分数都一样
+:::
+
+
+**总结**
+
+`match`和`multi_match`的区别是什么？
+- `match`：根据一个字段查询
+- `multi_match`：根据多个字段查询，参与查询字段越多，查询性能越差
+
+精确查询常见的有哪些？
+- `term查询`：根据词条精确匹配，一般搜索keyword类型、数值类型、布尔类型、日期类型字段
+- `range查询`：根据数值范围查询，可以是数值、日期的范围
+- `根据ids查询`
 
 
 
