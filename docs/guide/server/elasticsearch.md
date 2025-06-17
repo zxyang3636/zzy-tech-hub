@@ -1739,7 +1739,6 @@ POST /{索引库名}/_update/{id}
                         .id(item.getId().toString())
                         .source(JSONUtil.toJsonStr(BeanUtil.copyProperties(item, ItemDoc.class)), XContentType.JSON));
             }
-            request.add(new DeleteRequest("items").id("1"));
             // 3.发送请求
             restHighLevelClient.bulk(request, RequestOptions.DEFAULT);
             pageNo++;
@@ -2002,5 +2001,541 @@ GET /items/_search
 - `根据ids查询`
 
 
+---
 
+
+
+##### 复合查询
+
+
+复合查询大致可以分为两类：
+- 第一类：基于逻辑运算组合叶子查询，实现组合条件，例如
+>bool
+- 第二类：基于某种算法修改查询时的文档相关性算分，从而改变文档排名。例如：
+>function_score
+>
+>dis_max
+
+其它复合查询及相关语法可以参考官方文档：
+[es文档](https://www.elastic.co/guide/en/elasticsearch/reference/7.12/compound-queries.html)
+
+
+**bool查询**
+
+bool查询，即布尔查询。就是利用逻辑运算来组合一个或多个查询子句的组合。bool查询支持的逻辑运算有：
+- `must`：必须匹配每个子查询，类似“与”
+- `should`：选择性匹配子查询，类似“或”
+- `must_not`：必须不匹配，不参与算分，类似“非”
+- `filter`：必须匹配，不参与算分
+
+bool查询的语法如下：
+
+```json
+GET /items/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {"match": {"name": "手机"}}
+      ],
+      "should": [
+        {"term": {"brand": { "value": "vivo" }}},
+        {"term": {"brand": { "value": "小米" }}}
+      ],
+      "must_not": [
+        {"range": {"price": {"gte": 2500}}}
+      ],
+      "filter": [
+        {"range": {"price": {"lte": 1000}}}
+      ]
+    }
+  }
+}
+```
+
+**示例：**
+
+- 需求：我们要搜索"智能手机"，但品牌必须是华为，价格必须是900~1599
+
+出于性能考虑，与搜索关键字无关的查询尽量采用`must_not`或`filter`逻辑运算，避免参与相关性算分。
+
+例如商城的搜索页面：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-17_21-05-56.png)
+其中输入框的搜索条件肯定要参与相关性算分，可以采用`must`。但是价格范围过滤、品牌过滤、分类过滤等尽量采用`filter`，不要参与相关性算分。
+```json
+GET /items/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "name": "智能手机"
+          }
+        }
+      ],
+      "filter": [
+        {
+          "term": {
+            "brand": "华为"
+          }
+        },
+        {
+          "range": {
+            "price": {
+              "gte": 90000,
+              "lte": 159900
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+响应：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-17_21-00-22.png)
+
+:::info
+一般来说用户通过关键字进行搜索，我们是需要进行算分的(_score)，而通过条件进行筛选的我们是不需要算分的，比如价格区间筛选等，es即使这样；
+
+而且参与算分的越多，那么性能肯定也是会下降的，效率会变低；
+:::
+
+---
+
+
+##### 排序和分页
+
+
+
+语法说明：
+```json
+GET /indexName/_search
+{
+  "query": {
+    "match_all": {}
+  },
+  "sort": [
+    {
+      "排序字段": {
+        "order": "排序方式asc和desc"
+      }
+    }
+  ]
+}
+```
+sort关键字：进行排序操作，sort的值是一个数组，所以可以指定多个排序的字段
+
+- 需求:搜索商品，按照销量排序，销量一样则按照价格升序
+```json
+GET /items/_search
+{
+  "query": {
+    "match_all": {}
+  },
+  "sort": [
+    {
+      "sold": "desc"
+    },
+    {
+      "price": "asc"
+    }
+  ]
+}
+
+```
+
+
+---
+
+**分页**
+
+elasticsearch 默认情况下只返回top10的数据。而如果要查询更多数据就需要修改分页参数了。
+
+elasticsearch中通过修改from、size参数来控制要返回的分页结果：
+- from：从第几个文档开始
+- size：总共查询几个文档
+类似于mysql中的`limit ?, ?`
+
+官方文档如下：[文档](https://www.elastic.co/guide/en/elasticsearch/reference/7.12/paginate-search-results.html)
+
+语法如下：
+```json
+GET /items/_search
+{
+  "query": {
+    "match_all": {}
+  },
+  "from": 0, // 分页开始的位置，默认为0
+  "size": 10,  // 每页文档数量，默认10
+  "sort": [
+    {
+      "price": {
+        "order": "desc"
+      }
+    }
+  ]
+}
+```
+
+
+- 需求:搜索商品，查询出销量排名前10的商品，销量一样时按照价格升序
+```json
+GET /items/_search
+{
+  "query": {
+    "match_all": {}
+  },
+  "sort": [
+    {
+      "sold": "desc"
+    },
+    {
+      "price": "asc"
+    }
+  ],
+  "from": 0,
+  "size": 10
+}
+
+```
+
+---
+
+##### **深度分页**
+
+elasticsearch的数据一般会采用分片存储，也就是把一个索引中的数据分成N份，存储到不同节点上。这种存储方式比较有利于数据扩展，但给分页带来了一些麻烦。
+
+比如一个索引库中有100000条数据，分别存储到4个分片，每个分片25000条数据。现在每页查询10条，查询第99页。那么分页查询的条件如下：
+
+```json
+GET /items/_search
+{
+  "from": 990, // 从第990条开始查询
+  "size": 10, // 每页查询10条
+  "sort": [
+    {
+      "price": "asc"
+    }
+  ]
+}
+```
+从语句来分析，要查询第990~1000名的数据。
+
+从实现思路来分析，肯定是将所有数据排序，找出前1000名，截取其中的990~1000的部分。但问题来了，我们如何才能找到所有数据中的前1000名呢？
+
+要知道每一片的数据都不一样，第1片上的第900~1000，在另1个节点上并不一定依然是900~1000名。所以我们只能在每一个分片上都找出排名前1000的数据，然后汇总到一起，重新排序，才能找出整个索引库中真正的前1000名，此时截取990~1000的数据即可。
+
+如图：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-17_21-44-27.png)
+
+试想一下，假如我们现在要查询的是第999页数据呢，是不是要找第9990~10000的数据，那岂不是需要把每个分片中的前10000名数据都查询出来，汇总在一起，在内存中排序？如果查询的分页深度更深呢，需要一次检索的数据岂不是更多？
+
+由此可知，当查询分页深度较大时，汇总数据过多，对内存和CPU会产生非常大的压力。
+
+因此elasticsearch会禁止**from+size** 超过10000的请求。
+
+
+针对深度分页，elasticsearch提供了两种解决方案：
+- `search after`：分页时需要排序，原理是从上一次的排序值开始，查询下一页数据。官方推荐使用的方式。
+- `scroll`：原理将排序后的文档id形成快照，保存下来，基于快照做分页。官方已经不推荐使用。
+
+
+**`search after`模式：**
+>优点：没有查询上限，支持深度分页
+>
+>缺点：只能向后逐页查询，不能随机翻页
+>
+>场景：数据迁移、手机滚动查询
+
+详情见文档：[文档](https://www.elastic.co/guide/en/elasticsearch/reference/7.12/paginate-search-results.html)
+
+::: tip
+`search after`的原理就是，当翻到某一页时，会记住当前的最后一页，那么下次再翻页时，就会把上次记住的那一页作为查询条件继续翻页，条件是大于上次记住的那一页，size限制xxx页数，这样就实现了每次翻页都是第一页
+
+假设你在看一本书，你已经翻到某一页（例如第10页），然后你想继续看第11页。search_after就像是“给你上一页的最后一行文字”，让你知道接下来你应该从哪里开始读，而不是从头开始翻书（就像from那样跳过很多页）
+:::
+
+:::warning
+总结：
+
+大多数情况下，我们采用普通分页就可以了。查看百度、京东等网站，会发现其分页都有限制。例如百度最多支持77页，每页不足20条。京东最多100页，每页最多60条。
+因此，一般我们采用限制分页深度的方式即可，无需实现深度分页。
+:::
+
+
+
+---
+
+##### 高亮
+
+
+什么是高亮显示呢？
+
+我们在百度，京东搜索时，关键字会变成红色，比较醒目，这叫高亮显示：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-17_22-14-16.png)
+
+观察页面源码，你会发现两件事情：
+- 高亮词条都被加了`<em>`标签
+- `<em>`标签都添加了红色样式
+
+css样式肯定是前端实现页面的时候写好的，但是前端编写页面的时候是不知道页面要展示什么数据的，不可能给数据加标签。而服务端实现搜索功能，要是有elasticsearch做分词搜索，是知道哪些词条需要高亮的。
+
+因此词条的**高亮标签肯定是由服务端提供数据的时候已经加上的**。
+
+因此实现高亮的思路就是：
+- 用户输入搜索关键字搜索数据
+- 服务端根据搜索关键字到elasticsearch搜索，并给搜索结果中的关键字词条添加html标签
+- 前端提前给约定好的html标签添加CSS样式
+
+---
+
+**实现高亮**
+
+事实上elasticsearch已经提供了给搜索关键字加标签的语法，无需我们自己编码。
+
+基本语法如下：
+```json
+GET /{索引库名}/_search
+{
+  "query": {
+    "match": {
+      "搜索字段": "搜索关键字"
+    }
+  },
+  "highlight": {
+    "fields": {
+      "高亮字段名称": {
+        "pre_tags": "<em>",
+        "post_tags": "</em>"
+      }
+    }
+  }
+}
+```
+
+示例:
+```json
+GET /items/_search
+{
+  "query": {
+    "match": {
+      "name": "脱脂牛奶"
+    }
+  },
+  "highlight": {
+    "fields": {
+      "name": {
+        "pre_tags": "<em>",
+        "post_tags": "</em>"
+      }
+    }
+  }
+}
+```
+部分响应结果：
+```json
+{
+  "took" : 547,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 1,
+    "successful" : 1,
+    "skipped" : 0,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : {
+      "value" : 1149,
+      "relation" : "eq"
+    },
+    "max_score" : 16.198345,
+    "hits" : [
+      {
+        "_index" : "items",
+        "_type" : "_doc",
+        "_id" : "33449279171",
+        "_score" : 16.198345,
+        "_source" : {
+          "id" : "33449279171",
+          "name" : "意大利 进口牛奶 葛兰纳诺脱脂纯牛奶 成人牛奶  进口脱脂纯牛奶1Lx6盒",
+          "price" : 3500,
+          "image" : "https://m.360buyimg.com/mobilecms/s720x720_jfs/t1/25045/9/2656/164517/5c20699dE9b7f4c9c/1a05e9bdd2c5d59e.jpg!q70.jpg.webp",
+          "category" : "牛奶",
+          "brand" : "葛兰纳诺",
+          "sold" : 0,
+          "commentCount" : 0,
+          "isAD" : false,
+          "updateTime" : 1556640000000
+        },
+        "highlight" : {
+          "name" : [
+            "意大利 进口<em>牛奶</em> 葛兰纳诺<em>脱脂</em>纯<em>牛奶</em> 成人<em>牛奶</em>  进口<em>脱脂</em>纯<em>牛奶</em>1Lx6盒"
+          ]
+        }
+      },
+    ]
+  }
+```
+
+:::warning
+注意：
+- 搜索必须有查询条件，而且是全文检索类型的查询条件，例如match
+- 参与高亮的字段必须是text类型的字段
+- 默认情况下参与高亮的字段要与搜索字段一致，除非添加：required_field_match=false
+:::
+
+---
+
+**总结**
+
+查询的DSL是一个大的JSON对象，包含下列属性：
+- `query`：查询条件
+- `from`和`size`：分页条件
+- `sort`：排序条件
+- `highlight`：高亮条件
+
+搜索的完整语法：
+```json
+GET /items/_search
+{
+  "query": {
+    "match": {
+      "name": "华为"
+    }
+  },
+  "from": 0, // 分页开始的位置
+  "size": 20, // 期望获取的文档总数
+  "sort": [ 
+    { "price": "asc" }, // 普通排序
+  ],
+  "highlight": {
+    "fields": { // 高亮字段
+      "name": {
+        "pre_tags": "<em>",  // 高亮字段的前置标签
+        "post_tags": "</em>" // 高亮字段的后置标签
+      }
+    }
+  }
+}
+
+```
+
+
+---
+
+### JavaRestClient查询
+
+文档的查询依然使用昨天学习的 RestHighLevelClient对象，查询的基本步骤如下：
+- 1）创建request对象，这次是搜索，所以是SearchRequest
+- 2）准备请求参数，也就是查询DSL对应的JSON参数
+- 3）发起请求
+- 4）解析响应，响应结果相对复杂，需要逐层解析
+
+#### 快速入门
+
+
+
+由于Elasticsearch对外暴露的接口都是Restful风格的接口，因此JavaAPI调用就是在发送Http请求。而我们核心要做的就是**利用利用Java代码组织请求参数，解析响应结果**。
+
+
+**发送请求**
+
+首先以match_all查询为例，其DSL和JavaAPI的对比如图：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-18_00-16-33.png)
+
+
+代码解读：
+-  第一步，创建`SearchRequest`对象，指定索引库名 
+-  第二步，利用`request.source()`构建DSL，DSL中可以包含查询、分页、排序、高亮等 
+  - query()：代表查询条件，利用`QueryBuilders.matchAllQuery()`构建一个`match_all`查询的`DSL`
+-  第三步，利用client.search()发送请求，得到响应 
+
+
+这里关键的API有两个，一个是`request.source()`，它构建的就是DSL中的完整JSON参数。其中包含了`query、sort、from、size、highlight`等所有功能
+
+另一个是QueryBuilders，其中包含了我们学习过的各种**叶子查询、复合查询**等
+
+解析响应的结果
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-18_00-25-11.png)
+
+**代码解读：**
+
+elasticsearch返回的结果是一个JSON字符串，结构包含：
+- `hits`：命中的结果 
+  - `total`：总条数，其中的value是具体的总条数值
+  - `max_score`：所有结果中得分最高的文档的相关性算分
+  - `hits`：搜索结果的文档数组，其中的每个文档都是一个json对象 
+    - `_source`：文档中的原始数据，也是json对象
+
+因此，我们解析响应结果，就是逐层解析JSON字符串，流程如下：
+- `SearchHits`：通过`response.getHits()`获取，就是JSON中的最外层的hits，代表命中的结果 
+  - `SearchHits.getTotalHits().value`：获取总条数信息
+  - `SearchHits.getHits()`：获取SearchHit数组，也就是文档数组 
+    - `SearchHit.getSourceAsString()`：获取文档结果中的`_source`，也就是原始的json文档数据
+
+
+**示例代码：**
+
+```java{26-44}
+@SpringBootTest(properties = "spring.profiles.active=local")
+public class ElasticeSearchTest {
+
+
+    private RestHighLevelClient restHighLevelClient;
+
+    @Autowired
+    private IItemService itemService;
+
+
+    @BeforeEach
+    void setUp() {
+        restHighLevelClient = new RestHighLevelClient(RestClient.builder(
+                HttpHost.create("http://192.168.146.131:9200")
+        ));
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        if (restHighLevelClient != null) {
+            restHighLevelClient.close();
+        }
+    }
+
+    @Test
+    void testSearch() throws IOException {
+        // 1. 创建request对象
+        SearchRequest request = new SearchRequest("items");
+        // 2. 配置requset参数
+        request.source().query(QueryBuilders.matchAllQuery());
+        // 3.发送请求
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        // 4. 解析结果
+        SearchHits searchHits = response.getHits();
+        // 总条数
+        long total = searchHits.getTotalHits().value;
+        System.out.println("total = " + total);
+        // 命中的数据
+        SearchHit[] hits = searchHits.getHits();
+        for (SearchHit hit : hits) {
+            String json = hit.getSourceAsString();
+            ItemDoc itemDoc = JSONUtil.toBean(json, ItemDoc.class);
+            System.out.println("itemDoc = " + itemDoc);
+        }
+    }
+}
+```
+
+---
+
+**总结**
+
+文档搜索的基本步骤是：
+1. 创建`SearchRequest`对象
+2. 准备`request.source()`，也就是DSL。
+    1. `QueryBuilders`来构建查询条件
+    2. 传入`request.source()` 的 `query()` 方法
+3. 发送请求，得到结果
+4. 解析结果（参考JSON结果，从外到内，逐层解析）
 
