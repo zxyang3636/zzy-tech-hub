@@ -3236,3 +3236,137 @@ GET /items/_search
 > field：指定聚合字段
 
 
+#### RestClient实现聚合
+
+
+可以看到在DSL中，`aggs`聚合条件与`query`条件是同一级别，都属于查询JSON参数。因此依然是利用`request.source()`方法来设置。
+
+不过聚合条件的要利用`AggregationBuilders`这个工具类来构造。DSL与JavaAPI的语法对比如下：
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-06-19_21-04-34.png)
+
+```java
+    @Test
+    void testAgg() throws IOException {
+        // 1. 创建request对象
+        SearchRequest request = new SearchRequest("items");
+        // 2. 分页
+        request.source().size(0);
+        // 聚合条件
+        String brandAggName = "brandAgg";
+        request.source().aggregation(
+                AggregationBuilders.terms(brandAggName)  // 类型、名称
+                        .field("brand")     // 字段
+                        .size(10)
+        );
+        // 3.发送请求
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        System.out.println("response = " + response);
+        // 4. 解析结果
+        Aggregations aggregations = response.getAggregations();
+        // 总条数
+        Terms brandTerms = aggregations.get(brandAggName);
+        List<? extends Terms.Bucket> buckets = brandTerms.getBuckets();
+        for (Terms.Bucket bucket : buckets) {
+            String keyAsString = bucket.getKeyAsString();
+            long docCount = bucket.getDocCount();
+            System.out.println("brand = " + keyAsString);
+            System.out.println("count = " + docCount);
+        }
+    }
+```
+
+结果：
+```json
+
+{
+  "took": 21,
+  "timed_out": false,
+  "_shards": {
+    "total": 1,
+    "successful": 1,
+    "skipped": 0,
+    "failed": 0
+  },
+  "hits": {
+    "total": {
+      "value": 10000,
+      "relation": "gte"
+    },
+    "max_score": null,
+    "hits": []
+  },
+  "aggregations": {
+    "sterms#brandAgg": {
+      "doc_count_error_upper_bound": 0,
+      "sum_other_doc_count": 65272,
+      "buckets": [
+        {
+          "key": "华为",
+          "doc_count": 7145
+        },
+        {
+          "key": "南极人",
+          "doc_count": 2432
+        },
+        {
+          "key": "奥古狮登",
+          "doc_count": 2035
+        },
+        {
+          "key": "森马",
+          "doc_count": 2005
+        },
+        {
+          "key": "恒源祥",
+          "doc_count": 1856
+        },
+        {
+          "key": "回力",
+          "doc_count": 1695
+        },
+        {
+          "key": "其他品牌",
+          "doc_count": 1590
+        },
+        {
+          "key": "斯凯奇",
+          "doc_count": 1565
+        },
+        {
+          "key": "小米",
+          "doc_count": 1498
+        },
+        {
+          "key": "北极绒",
+          "doc_count": 1382
+        }
+      ]
+    }
+  }
+}
+
+
+brand = 华为
+count = 7145
+brand = 南极人
+count = 2432
+brand = 奥古狮登
+count = 2035
+brand = 森马
+count = 2005
+brand = 恒源祥
+count = 1856
+brand = 回力
+count = 1695
+brand = 其他品牌
+count = 1590
+brand = 斯凯奇
+count = 1565
+brand = 小米
+count = 1498
+brand = 北极绒
+count = 1382
+```
+
+
