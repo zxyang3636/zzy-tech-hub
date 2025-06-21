@@ -126,7 +126,7 @@ eslint, @eslint/js, globals, typescript-eslint, eslint-plugin-vue
 ☕️Installing...
 ```
 
-### vue3环境代码校验插件
+**vue3环境代码校验插件**
 安装指令:
 ```bash
 pnpm install -D eslint-plugin-import eslint-plugin-vue eslint-plugin-node eslint-plugin-prettier eslint-config-prettier eslint-plugin-node @babel/eslint-parser
@@ -327,4 +327,293 @@ yarn add prettier --dev
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }
+```
+
+## 配置stylelint
+[stylelint](https://stylelint.io/)为css的lint工具。可格式化css代码，检查css语法错误与不合理的写法，指定css书写顺序等。
+
+**官网:https://stylelint.bootcss.com/**
+
+我们的项目中使用scss作为预处理器，安装以下依赖：
+```bash
+pnpm add sass sass-loader stylelint postcss postcss-scss postcss-html stylelint-config-prettier stylelint-config-recess-order stylelint-config-recommended-scss stylelint-config-standard stylelint-config-standard-vue stylelint-scss stylelint-order stylelint-config-standard-scss -D
+```
+
+`.stylelintrc.cjs`**配置文件**
+
+```js
+// @see https://stylelint.bootcss.com/
+
+module.exports = {
+  extends: [
+    'stylelint-config-standard', // 配置stylelint拓展插件
+    'stylelint-config-html/vue', // 配置 vue 中 template 样式格式化
+    'stylelint-config-standard-scss', // 配置stylelint scss插件
+    'stylelint-config-recommended-vue/scss', // 配置 vue 中 scss 样式格式化
+    'stylelint-config-recess-order', // 配置stylelint css属性书写顺序插件,
+    'stylelint-config-prettier', // 配置stylelint和prettier兼容
+  ],
+  overrides: [
+    {
+      files: ['**/*.(scss|css|vue|html)'],
+      customSyntax: 'postcss-scss',
+    },
+    {
+      files: ['**/*.(html|vue)'],
+      customSyntax: 'postcss-html',
+    },
+  ],
+  ignoreFiles: [
+    '**/*.js',
+    '**/*.jsx',
+    '**/*.tsx',
+    '**/*.ts',
+    '**/*.json',
+    '**/*.md',
+    '**/*.yaml',
+  ],
+  /**
+   * null  => 关闭该规则
+   * always => 必须
+   */
+  rules: {
+    'value-keyword-case': null, // 在 css 中使用 v-bind，不报错
+    'no-descending-specificity': null, // 禁止在具有较高优先级的选择器后出现被其覆盖的较低优先级的选择器
+    'function-url-quotes': 'always', // 要求或禁止 URL 的引号 "always(必须加上引号)"|"never(没有引号)"
+    'no-empty-source': null, // 关闭禁止空源码
+    'selector-class-pattern': null, // 关闭强制选择器类名的格式
+    'property-no-unknown': null, // 禁止未知的属性(true 为不允许)
+    'block-opening-brace-space-before': 'always', //大括号之前必须有一个空格或不能有空白符
+    'value-no-vendor-prefix': null, // 关闭 属性值前缀 --webkit-box
+    'property-no-vendor-prefix': null, // 关闭 属性前缀 -webkit-mask
+    'selector-pseudo-class-no-unknown': [
+      // 不允许未知的选择器
+      true,
+      {
+        ignorePseudoClasses: ['global', 'v-deep', 'deep'], // 忽略属性，修改element默认样式的时候能使用到
+      },
+    ],
+  },
+}
+```
+
+
+`.stylelintignore`忽略文件
+```
+/node_modules/*
+/dist/*
+/html/*
+/public/*
+```
+
+运行脚本
+```json
+"scripts": {
+	"lint:style": "stylelint src/**/*.{css,scss,vue} --cache --fix"
+}
+```
+
+最后配置统一的prettier来格式化我们的js和css，html代码
+```json
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "fix": "eslint --config ./eslint.config.js src --fix",
+    "format": "prettier --write \"./**/*.{html,vue,ts,js,json,md}\"",
+    "lint:eslint": "eslint src/**/*.{ts,vue} --cache --fix",
+    "lint:style": "stylelint src/**/*.{css,scss,vue} --cache --fix"
+  },
+```
+
+:::tip
+如果报了这个错：`“Issues with peer dependencies found ”错误`
+执行该命令
+```bash
+pnpm config set auto-install-peers true
+```
+auto-install-peers 设置为 true ，在运行pnpm后，缺失的peer dependenices 会自动安装。
+
+当然，也可以删除node_modules，再重新安装
+
+---
+
+如果报错`module' is not defined.eslintno-undef`
+
+**.eslint.config.js**👇
+```
+export default [
+  {
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        // 可选：手动声明 globals
+      },
+      environment: {
+        node: true, // 👈 开启 Node.js 环境
+      },
+    },
+    // 其他配置...
+  }
+]
+```
+:::
+
+## 配置husky
+
+在上面我们已经集成好了我们代码校验工具，但是需要每次手动的去执行命令才会格式化我们的代码。如果有人没有格式化就提交了远程仓库中，那这个规范就没什么用。所以我们需要强制让开发人员按照代码规范来提交。
+
+要做到这件事情，就需要利用husky在代码提交之前触发git hook(git在客户端的钩子)，然后执行`pnpm run format`来自动的格式化我们的代码。
+
+安装`husky`
+```bash
+pnpm install -D husky
+```
+执行
+```bash
+npx husky-init
+```
+
+会在根目录下生成个一个.husky目录，在这个目录下面会有一个pre-commit文件，这个文件里面的命令在我们执行commit的时候就会执行
+
+在`.husky/pre-commit`文件添加如下命令：
+```
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+pnpm run format
+```
+
+当我们对代码进行commit操作的时候，就会执行命令，对代码进行格式化，然后再提交。
+
+
+## 配置commitlint
+
+对于我们的commit信息，也是有统一规范的，不能随便写,要让每个人都按照统一的标准来执行，我们可以利用**commitlint**来实现。
+
+安装包
+```bash
+pnpm add @commitlint/config-conventional @commitlint/cli -D
+```
+添加配置文件，新建`commitlint.config.cjs`(注意是cjs)，然后添加下面的代码：
+```js
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  // 校验规则
+  rules: {
+    'type-enum': [
+      2,
+      'always',
+      [
+        'feat',
+        'fix',
+        'docs',
+        'style',
+        'refactor',
+        'perf',
+        'test',
+        'chore',
+        'revert',
+        'build',
+      ],
+    ],
+    'type-case': [0],
+    'type-empty': [0],
+    'scope-empty': [0],
+    'scope-case': [0],
+    'subject-full-stop': [0, 'never'],
+    'subject-case': [0, 'never'],
+    'header-max-length': [0, 'always', 72],
+  },
+}
+```
+在`package.json`中配置scripts命令
+```json
+{
+"scripts": {
+    "commitlint": "commitlint --config commitlint.config.cjs -e -V"
+  },
+}
+```
+配置结束，现在当我们填写`commit`信息的时候，前面就需要带着下面的`subject`
+
+```
+'feat',//新特性、新功能
+'fix',//修改bug
+'docs',//文档修改
+'style',//代码格式修改, 注意不是 css 修改
+'refactor',//代码重构
+'perf',//优化相关，比如提升性能、体验
+'test',//测试用例修改
+'chore',//其他修改, 比如改变构建流程、或者增加依赖库、工具等
+'revert',//回滚到上一个版本
+'build',//编译相关的修改，例如发布版本、对项目构建或者依赖的改动
+```
+
+**配置husky**
+```
+npx husky add .husky/commit-msg 
+```
+在生成的commit-msg文件中添加下面的命令
+```
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+pnpm commitlint
+```
+当我们 commit 提交信息时，就不能再随意写了，必须是 git commit -m 'fix: xxx' 符合类型的才可以，**需要注意的是类型的后面需要用英文的 :，并且冒号后面是需要空一格的，这个是不能省略的**；
+
+
+## 强制使用pnpm包管理器工具
+
+团队开发项目的时候，需要统一包管理器工具,因为不同包管理器工具下载同一个依赖,可能版本不一样,
+
+导致项目出现bug问题,因此包管理器工具需要统一管理！！！
+
+在根目录创建`scritps/preinstall.js`文件，添加下面的内容
+
+```
+if (!/pnpm/.test(process.env.npm_execpath || '')) {
+  console.warn(
+    `\u001b[33mThis repository must using pnpm as the package manager ` +
+    ` for scripts to work properly.\u001b[39m\n`,
+  )
+  process.exit(1)
+}
+```
+配置命令
+```
+"scripts": {
+	"preinstall": "node ./scripts/preinstall.js"
+}
+```
+**当我们使用npm或者yarn来安装包的时候，就会报错了。原理就是在install的时候会触发preinstall（npm提供的生命周期钩子）这个文件里面的代码。**
+
+
+## 集成element-plus
+
+安装以下：
+```bash
+pnpm i @element-plus/icons-vue
+```
+
+```bash
+pnpm install element-plus
+```
+
+main.ts
+```ts{3-6,9-11}[main.ts]
+import { createApp } from 'vue'
+import App from './App.vue'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+//@ts-ignore忽略当前文件ts类型的检测否则有红色提示(打包会失败)
+import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+
+const app = createApp(App)
+app.use(ElementPlus, {
+  locale: zhCn,
+})
+app.mount('#app')
+
 ```
