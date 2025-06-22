@@ -107,7 +107,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: "Vue", link: "/guide/client/vue3" },
-          { text: "Vue3后台管理搭建", link: "/guide/client/vue3Project" },
+          { text: "Vue3工程化", link: "/guide/client/vue3Project" },
           // { text: "MySql", link: "/guide/server/mysqlMianshi" },
         ],
       },
