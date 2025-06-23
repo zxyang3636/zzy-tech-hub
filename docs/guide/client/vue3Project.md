@@ -163,7 +163,7 @@ export default [
     ignores: ['node_modules', 'dist', '*.config.js'],
 
     languageOptions: {
-      globals: globals.browser, // 使用浏览器全局变量
+      globals: { ...globals.browser, ...globals.node }, // 使用浏览器全局变量
 
       ecmaVersion: 'latest', // 使用最新的 ECMAScript 版本
 
@@ -205,7 +205,7 @@ export default [
 
       // TypeScript 规则
 
-      '@typescript-eslint/no-unused-vars': 'error', // 禁止未使用的变量
+      '@typescript-eslint/no-unused-vars': 'off', // 允许未使用的变量
 
       '@typescript-eslint/prefer-ts-expect-error': 'error', // 优先使用 ts-expect-error
 
@@ -442,22 +442,26 @@ auto-install-peers 设置为 true ，在运行pnpm后，缺失的peer dependenic
 如果报错`module' is not defined.eslintno-undef`
 
 **.eslint.config.js**👇
-```
+```js
 export default [
   {
+    // 适用于的文件类型
+
+    files: ['**/*.{js,mjs,cjs,ts,vue}'],
+
+    // 忽略的文件和文件夹
+
+    ignores: ['node_modules', 'dist', '*.config.js'], // ⬅️
+
     languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      globals: {
-        // 可选：手动声明 globals
-      },
-      environment: {
-        node: true, // 👈 开启 Node.js 环境
-      },
+      globals: { ...globals.browser, ...globals.node }, // 使用浏览器全局变量
+
+      ecmaVersion: 'latest', // 使用最新的 ECMAScript 版本
+
+      sourceType: 'module', // 使用模块类型
+
+      parser: tsParser, // 使用 TypeScript 解析器
     },
-    // 其他配置...
-  }
-]
 ```
 :::
 
@@ -607,7 +611,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
-//@ts-ignore忽略当前文件ts类型的检测否则有红色提示(打包会失败)
+//@ts-expect-error忽略当前文件ts类型的检测否则有红色提示(打包会失败)
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 const app = createApp(App)
@@ -664,7 +668,7 @@ export default defineConfig({
     },
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
