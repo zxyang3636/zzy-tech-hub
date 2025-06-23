@@ -285,9 +285,10 @@ yarn add prettier --dev
   "htmlWhitespaceSensitivity": "ignore",
   "endOfLine": "auto",
   "trailingComma": "all",
-  "tabWidth": 2
+  "tabWidth": 2,
+  "printWidth": 80,
+  "vueIndentScriptAndStyle": true
 }
-
 ```
 
 `.prettierignore`
@@ -325,8 +326,12 @@ yarn add prettier --dev
   "editor.formatOnSave": true,
   "[typescript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[vue]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }
+
 ```
 
 ## 配置stylelint
@@ -810,7 +815,6 @@ declare module 'virtual:svg-icons-register' {
 ```
 
 
-svg封装为全局组件
 
 因为项目很多模块需要使用图标,因此把它封装为全局组件
 
@@ -871,5 +875,603 @@ import SvgIcon from '@/components/SvgIcon/index.vue'
 
 ```
 
+**封装为全局组件**
+
+因为项目很多模块需要使用图标,因此把它封装为全局组件
+
+在src文件夹`components`目录下创建一个`index.ts`文件，用于注册`components`文件夹内部全部全局组件
+
+```ts [index.ts]
+import SvgIcon from './SvgIcon/index.vue';
+import type { App, Component } from 'vue';
+const components: { [name: string]: Component } = { SvgIcon };
+export default {
+    install(app: App) {
+        Object.keys(components).forEach((key: string) => {
+            app.component(key, components[key]);
+        })
+    }
+}
+```
+
+在入口文件main.ts引入src/index.ts文件,通过app.use方法安装自定义插件
+```ts [main.ts]
+import globalComponent from '@/components'
+app.use(globalComponent)
+```
+
+## 集成sass
+
+我们目前在组件内部已经可以使用scss样式,因为在配置styleLint工具的时候，项目当中已经安装过`sass` `sass-loader`,因此我们再组件内可以使用`scss`语法需要加上`lang="scss"`
+```
+<style scoped lang="scss"></style>
+```
+
+在src下创建styles，并创建index.scss
+
+接下来我们为项目添加一些全局的样式
+
+**引入全局样式**
+在main.ts中
+```ts [main.ts]
+import '@/styles/index.scss'
+```
+
+创建`src/styles/reset.scss`
+npm地址：[地址](https://www.npmjs.com/package/reset.scss?activeTab=code)
+```scss
+/**
+ * ENGINE
+ * v0.2 | 20150615
+ * License: none (public domain)
+ */
+
+*,
+*:after,
+*:before {
+  box-sizing: border-box;
+
+  outline: none;
+}
+
+html,
+body,
+div,
+span,
+applet,
+object,
+iframe,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+blockquote,
+pre,
+a,
+abbr,
+acronym,
+address,
+big,
+cite,
+code,
+del,
+dfn,
+em,
+img,
+ins,
+kbd,
+q,
+s,
+samp,
+small,
+strike,
+strong,
+sub,
+sup,
+tt,
+var,
+b,
+u,
+i,
+center,
+dl,
+dt,
+dd,
+ol,
+ul,
+li,
+fieldset,
+form,
+label,
+legend,
+table,
+caption,
+tbody,
+tfoot,
+thead,
+tr,
+th,
+td,
+article,
+aside,
+canvas,
+details,
+embed,
+figure,
+figcaption,
+footer,
+header,
+hgroup,
+menu,
+nav,
+output,
+ruby,
+section,
+summary,
+time,
+mark,
+audio,
+video {
+  font: inherit;
+  font-size: 100%;
+
+  margin: 0;
+  padding: 0;
+
+  vertical-align: baseline;
+
+  border: 0;
+}
+
+article,
+aside,
+details,
+figcaption,
+figure,
+footer,
+header,
+hgroup,
+menu,
+nav,
+section {
+  display: block;
+}
+
+body {
+  line-height: 1;
+}
+
+ol,
+ul {
+  list-style: none;
+}
+
+blockquote,
+q {
+  quotes: none;
+  &:before,
+  &:after {
+    content: '';
+    content: none;
+  }
+}
+
+sub,
+sup {
+  font-size: 75%;
+  line-height: 0;
+
+  position: relative;
+
+  vertical-align: baseline;
+}
+sup {
+  top: -0.5em;
+}
+sub {
+  bottom: -0.25em;
+}
+
+table {
+  border-spacing: 0;
+  border-collapse: collapse;
+}
+
+input,
+textarea,
+button {
+  font-family: inhert;
+  font-size: inherit;
+
+  color: inherit;
+}
+
+select {
+  text-indent: 0.01px;
+  text-overflow: '';
+
+  border: 0;
+  border-radius: 0;
+
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+select::-ms-expand {
+  display: none;
+}
+
+code,
+pre {
+  font-family: monospace, monospace;
+  font-size: 1em;
+}
+
+```
+
+在`index.scss`中引入reset.scss
+```ts
+@import './reset.scss';
+```
+
+但是你会发现在`src/styles/index.scss`全局样式文件中没有办法使用`$`变量;因此需要给项目中引入全局变量`$`
+
+在`style/variable.scss`创建一个`variable.scss`文件
 
 
+在`vite.config.ts`文件配置如下:
+```ts [vite.config.ts]
+export default defineConfig((config) => {
+  css:{
+    preprocessorOptions:{
+      scss:{
+        additionalData: '@use "@/styles/variable.scss" as *;'
+      }
+    }
+  }
+}
+
+```
+
+**使用方式**
+
+```scss [variable.scss]
+$bgColor: #f0f2f5;
+```
+
+```scss
+<style scoped lang="scss">
+  .app {
+    background-color: $bgColor;
+  }
+</style>
+```
+
+
+## mock数据
+
+```bash
+pnpm install -D vite-plugin-mock mockjs
+```
+
+配置`vite.config.ts`
+```ts [vite.config.ts]
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import path from 'path'
+import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
+import { viteMockServe } from 'vite-plugin-mock'
+
+// https://vite.dev/config/
+export default defineConfig((command) => {
+  return {
+    plugins: [
+      vue(),
+      createSvgIconsPlugin({
+        // Specify the icon folder to be cached
+        iconDirs: [path.resolve(process.cwd(), 'src/assets/icons')],
+        // Specify symbolId format
+        symbolId: 'icon-[dir]-[name]',
+      }),
+      viteMockServe({
+        enable: command.command === 'serve',
+      }),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve('./src'), // 相对路径别名配置，使用 @ 代替 src
+      },
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: '@use "@/styles/variable.scss" as *;',
+        },
+      },
+    },
+  }
+})
+
+```
+
+
+根目录创建`mock`文件夹
+
+建一个`user.ts`
+```ts [user.ts]
+//用户信息数据
+function createUserList() {
+  return [
+    {
+      userId: 1,
+      avatar: 'https://wpimg.wallstcn.com/f778738c-e4f8-4870-b634-56703b4acafe.gif',
+      username: 'admin',
+      password: '111111',
+      desc: '平台管理员',
+      roles: ['平台管理员'],
+      buttons: ['cuser.detail'],
+      routes: ['home'],
+      token: 'Admin Token',
+    },
+    {
+      userId: 2,
+      avatar: 'https://wpimg.wallstcn.com/f778738c-e4f8-4870-b634-56703b4acafe.gif',
+      username: 'system',
+      password: '111111',
+      desc: '系统管理员',
+      roles: ['系统管理员'],
+      buttons: ['cuser.detail', 'cuser.user'],
+      routes: ['home'],
+      token: 'System Token',
+    },
+  ]
+}
+
+export default [
+  // 用户登录接口
+  {
+    url: '/api/user/login', //请求地址
+    method: 'post', //请求方式
+    response: ({ body }) => {
+      //获取请求体携带过来的用户名与密码
+      const { username, password } = body
+      //调用获取用户信息函数,用于判断是否有此用户
+      const checkUser = createUserList().find((item) => item.username === username && item.password === password)
+      //没有用户返回失败信息
+      if (!checkUser) {
+        return { code: 201, data: { message: '账号或者密码不正确' } }
+      }
+      //如果有返回成功信息
+      const { token } = checkUser
+      return { code: 200, data: { token } }
+    },
+  },
+  // 获取用户信息
+  {
+    url: '/api/user/info',
+    method: 'get',
+    response: (request) => {
+      //获取请求头携带token
+      const token = request.headers.token
+      //查看用户信息是否包含有次token用户
+      const checkUser = createUserList().find((item) => item.token === token)
+      //没有返回失败的信息
+      if (!checkUser) {
+        return { code: 201, data: { message: '获取用户信息失败' } }
+      }
+      //如果有返回成功信息
+      return { code: 200, data: { checkUser } }
+    },
+  },
+]
+
+```
+
+main.ts中测试下
+```ts [main.ts]
+import axios from 'axios'
+
+axios({
+  url: '/api/user/login',
+  method: 'post',
+  data: {
+    username: 'admin',
+    password: '111111',
+  },
+})
+```
+
+
+## axios
+```bash
+pnpm install axios
+```
+
+在开发项目的时候避免不了与后端进行交互,因此我们需要使用axios插件实现发送网络请求。在开发项目的时候
+
+我们经常会把axios进行二次封装。
+
+目的:
+
+1:使用请求拦截器，可以在请求拦截器中处理一些业务(开始进度条、请求头携带公共参数)
+
+2:使用响应拦截器，可以在响应拦截器中处理一些业务(进度条结束、简化服务器返回的数据、处理http网络错误)
+
+在根目录下创建`utils/request.ts`
+
+```ts [request.ts]
+// axios二次封装
+import axios from 'axios'
+import { ElMessage } from 'element-plus'
+
+let request = axios.create({
+  baseURL: import.meta.env.VITE_APP_BASE_API, // 基础路径带上/api
+  timeout: 5000,
+})
+
+//请求拦截器
+request.interceptors.request.use((config) => {
+  //获取token,在请求头携带
+  const token = localStorage.getItem('Authorization')
+  if (token) {
+    config.headers.Authorization = token
+  }
+  return config
+})
+
+//响应拦截器
+request.interceptors.response.use(
+  (response) => {
+    return response.data
+  },
+  (error) => {
+    let msg: string = ''
+    let status: number = error.response.status
+    switch (status) {
+      case 401:
+        msg = 'token过期'
+        break
+      case 403:
+        msg = '无权访问'
+        break
+      case 404:
+        msg = '请求地址错误'
+        break
+      case 500:
+        msg = '服务器错误'
+        break
+      default:
+        msg = '未知错误'
+        break
+    }
+    ElMessage.error(msg)
+    return Promise.reject(error)
+  },
+)
+
+export default request
+
+```
+
+``` [.env.development]
+# 变量必须以 VITE_ 为前缀才能暴露给外部读取
+NODE_ENV = 'development'
+VITE_APP_TITLE = 'ZZY后台'
+VITE_APP_BASE_API = '/api'
+VITE_SERVE='http://127.0.0.1:8080'
+```
+
+简单测试下
+```vue [App.vue]
+<script setup lang="ts">
+import { onMounted } from 'vue';
+import request from './utils/request';
+
+onMounted(() => {
+  request({
+    url: '/user/login',
+    method: 'post',
+    data: {
+      username: 'admin',
+      password: '111111',
+    },
+  }).then((res) => {
+    console.log(res);
+  })
+})
+</script>
+```
+
+### API接口统一管理
+
+在开发项目的时候,接口可能很多需要统一管理。
+
+在src目录下去创建api文件夹去统一管理项目的接口；
+
+
+`api`创建user文件夹放用户相关接口
+
+user下创建`index.ts`及`type.ts`
+
+```ts [index.ts]
+// 同意管理用户相关接口
+
+import request from '@/utils/request'
+import type { loginForm, loginResponse, userResponseData } from './type'
+
+// 管理接口地址
+enum API {
+  LOGIN_URL = '/user/login',
+  USER_INFO_URL = '/user/info',
+}
+
+// 暴露请求函数
+
+export const reqLogin = (data: loginForm) =>
+  request.post<any, loginResponse>(API.LOGIN_URL, data)
+
+export const reqUserInfo = () =>
+  request.get<any, userResponseData>(API.USER_INFO_URL)
+
+```
+
+```ts [type.ts]
+// 登录接口的参数ts类型
+export interface loginForm {
+  username: string
+  password: string
+}
+
+export interface loginResponse {
+  code: number
+  data: dataType
+}
+
+interface dataType {
+  token: string
+}
+
+interface userInfo {
+  userId: number
+  avatar: string
+  username: string
+  password: string
+  desc: string
+  roles: string[]
+  buttons: string[]
+  routes: string[]
+  token: string
+}
+
+interface user {
+  checkUser: userInfo
+}
+
+export interface userResponseData {
+  code: number
+  data: user
+}
+
+```
+
+测试使用
+```vue [App.vue]
+<template>
+  <div></div>
+</template>
+
+<script setup lang="ts">
+  import { ref, reactive, toRefs, onMounted } from 'vue'
+  import { reqLogin } from './api/user'
+  onMounted(() => {
+    reqLogin({ username: 'admin', password: '111111' }).then((res) => {
+      console.log(res)
+    })
+  })
+</script>
+
+<style scoped lang="scss"></style>
+
+```
