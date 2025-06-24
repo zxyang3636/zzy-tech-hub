@@ -1117,7 +1117,7 @@ pre {
 
 在`index.scss`中引入reset.scss
 ```ts
-@import './reset.scss';
+@use './reset.scss' as *;
 ```
 
 但是你会发现在`src/styles/index.scss`全局样式文件中没有办法使用`$`变量;因此需要给项目中引入全局变量`$`
@@ -1477,5 +1477,144 @@ export interface userResponseData {
 </script>
 
 <style scoped lang="scss"></style>
+
+```
+
+
+## router
+
+```bash
+pnpm install vue-router
+```
+
+创建`router`,`views`文件夹
+
+以及`view/home/index.vue`，`view/login/index.vue`，`view/404/index.vue`，`router/index.ts`，`router/routes.ts`文件
+
+
+`main.ts`
+```ts [main.ts]
+import router from '@/router'
+
+app.use(router)
+```
+
+```ts [routes.ts]
+// 对外暴露配置路由（常量路由）
+export const constantRoute = [
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/login/index.vue'),
+  },
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('@/views/home/index.vue'),
+  },
+  {
+    path: '/404',
+    name: '404',
+    component: () => import('@/views/404/index.vue'),
+  },
+  {
+    // 任意路由
+    path: '/:pathMatch(.*)*',
+    name: 'Any',
+    redirect: '/404',
+  },
+]
+
+```
+
+```ts [index.ts]
+// 通过vue-router实现模版路由配置
+import { createRouter, createWebHistory } from 'vue-router'
+import { constantRoute } from './routes'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: constantRoute,
+  // 滚动行为
+  scrollBehavior() {
+    return {
+      left: 0,
+      top: 0,
+    }
+  },
+})
+
+export default router
+
+
+```
+
+`App.vue`
+```vue
+<template>
+  <div>
+    <router-view></router-view>
+  </div>
+</template>
+
+<script setup lang="ts"></script>
+
+<style scoped lang="scss"></style>
+
+```
+
+
+## pinia
+
+```bash
+pnpm i pinia
+```
+
+创建`src/store/index.ts`
+```ts [index.ts]
+import { createPinia } from 'pinia'
+
+let pinia = createPinia()
+
+export default pinia
+
+```
+
+`main.ts`
+```ts [main.ts]
+import pinia from './store'
+
+app.use(pinia)
+```
+
+创建`src/store/modules/user.ts`
+
+```ts [user.ts]
+import { defineStore } from 'pinia'
+import { reqLogin } from '@/api/user'
+import type { loginForm } from '@/api/user/type'
+
+let useUserStore = defineStore('User', {
+  state: () => {
+    return {
+      token: localStorage.getItem('Authorization') || '',
+    }
+  },
+  actions: {
+    async userLogin(val: loginForm) {
+      let response: any = await reqLogin(val)
+      if (response.code === 200) {
+        this.token = response.data.token
+        localStorage.setItem('Authorization', response.data.token)
+        return 'ok'
+      } else {
+        return Promise.reject(new Error(response.data.message))
+      }
+    },
+  },
+  getters: {},
+})
+
+export default useUserStore
 
 ```
