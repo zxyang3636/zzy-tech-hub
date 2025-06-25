@@ -1618,3 +1618,328 @@ let useUserStore = defineStore('User', {
 export default useUserStore
 
 ```
+
+
+
+## i18n
+
+```bash
+pnpm install vue-i18n
+```
+
+建个组件`/src/components/LanguageSwitcher/index.vue`
+```vue
+<template>
+  <!-- 主容器，需要 relative 定位 -->
+  <div
+    class="custom-hover-language-switcher"
+    @mouseenter="openMenu"
+    @mouseleave="closeMenuWithDelay"
+  >
+    <!-- 触发器 -->
+    <span class="switcher-trigger">
+      <!-- 使用 Element Plus 的图标组件 -->
+      <el-icon :size="30">
+        <!-- <ChatDotRound />  -->
+        <SvgIcon name="internationalization" height="19px" width="20px"></SvgIcon>
+      </el-icon>
+      <!-- 可选：显示当前语言 -->
+      <span class="current-lang-text">{{ currentLanguage.toUpperCase() }}</span>
+    </span>
+
+    <!-- 自定义下拉菜单，使用 v-if 控制显示隐藏 -->
+    <!-- 注意：菜单本身不需要监听 hover 事件，因为父容器已经处理了 -->
+    <transition name="dropdown-fade">
+      <!-- 添加一个过渡效果，让显示/隐藏更平滑 -->
+      <div v-if="isMenuOpen" class="dropdown-menu">
+        <!-- 遍历语言列表生成菜单项 -->
+        <div
+          v-for="lang in languages"
+          :key="lang.code"
+          class="menu-item"
+          :class="{ 'is-active': lang.code === currentLanguage }"
+          @click="handleCommand(lang.code)"
+        >
+          {{ lang.name }}
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script setup>
+  import { ref, defineProps, defineEmits, onUnmounted } from 'vue' // 需要 onUnmounted 来清理定时器
+  import { ElIcon } from 'element-plus'
+  import { ChatDotRound } from '@element-plus/icons-vue'
+  import { useI18n } from 'vue-i18n' // 假设你使用 vue-i18n
+
+  const { locale, t } = useI18n()
+
+  const props = defineProps({
+    languages: {
+      type: Array,
+      default: () => [
+        { code: 'zh', name: '中文' },
+        { code: 'en', name: 'English' },
+      ],
+    },
+  })
+
+  // 响应式变量，控制下拉菜单的显示/隐藏
+  const isMenuOpen = ref(false)
+
+  // 响应式变量，存储当前选中的语言代码，用于高亮显示
+  // 从 localStorage 读取或使用默认值 'zh'
+  const currentLanguage = ref(localStorage.getItem('language') || 'zh')
+
+  // 用于存储定时器的变量
+  let closeTimer = null
+
+  // 打开菜单的方法 (清除任何待定的关闭定时器)
+  const openMenu = () => {
+    clearTimeout(closeTimer) // 清除定时器
+    isMenuOpen.value = true
+  }
+
+  // 延迟关闭菜单的方法
+  const closeMenuWithDelay = () => {
+    // 先清除旧的定时器，避免重复设置
+    clearTimeout(closeTimer)
+    // 设置一个新的定时器
+    closeTimer = setTimeout(() => {
+      isMenuOpen.value = false
+    }, 150) // 延迟 150 毫秒关闭，这个值可以根据需要调整
+  }
+
+  // 立即关闭菜单的方法 (用于点击菜单项后调用)
+  const closeMenu = () => {
+    clearTimeout(closeTimer) // 立即关闭时也要清除定时器
+    isMenuOpen.value = false
+  }
+
+  // 处理菜单项点击事件
+  const handleCommand = (command) => {
+    console.log('切换到语言:', command)
+
+    // 更新当前语言响应式变量，用于高亮显示
+    currentLanguage.value = command
+
+    // 执行您的语言切换逻辑
+    locale.value = command
+    localStorage.setItem('language', command)
+
+    // 触发父组件的事件 (如果需要)
+    // emit('changeLanguage', command);
+
+    // 点击菜单项后立即关闭菜单
+    closeMenu()
+  }
+
+  // 组件卸载时，确保清除定时器，防止内存泄漏
+  onUnmounted(() => {
+    clearTimeout(closeTimer)
+  })
+</script>
+
+<style scoped>
+  /* 主容器样式 */
+  .custom-hover-language-switcher {
+    position: relative; /* 相对定位，为下拉菜单提供定位参考 */
+    display: inline-block; /* 使容器宽度包裹内容 */
+    vertical-align: middle; /* 如果在行内使用，可以帮助对齐 */
+    /* 确保有足够宽度包含触发器和菜单 */
+    /* background-color: rgba(255,0,0,0.1); /* 临时添加背景色，用于调试 hover 区域 */
+  }
+
+  /* 触发器样式 */
+  .switcher-trigger {
+    display: inline-flex; /* 使图标居中对齐 */
+    align-items: center;
+    cursor: pointer; /* 鼠标悬停时显示手型 */
+    padding: 0 5px; /* 添加一些内边距 */
+    color: var(--el-text-color-regular); /* 使用 Element Plus 的默认文本颜色 */
+    transition: color 0.3s ease; /* 添加颜色过渡效果 */
+  }
+
+  .switcher-trigger:hover {
+    color: var(--el-color-primary); /* 悬停时改变颜色 */
+  }
+
+  /* 自定义下拉菜单样式 */
+  .dropdown-menu {
+    position: absolute; /* 绝对定位 */
+    top: 100%; /* 定位在触发器下方 */
+    right: 0; /* 可以根据需要调整 left 或 right */
+    /* left: 0; */
+    z-index: 100; /* 确保菜单在其他元素之上 */
+    background-color: #fff; /* 背景颜色 */
+    border: 1px solid #ebeef5; /* 边框 */
+    border-radius: 4px; /* 圆角 */
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1); /* 阴影 */
+    padding: 6px 0; /* 内边距 */
+    margin-top: 8px; /* 与触发器之间的间距 */
+    min-width: 100px; /* 最小宽度 */
+    list-style: none; /* 移除列表默认样式（如果用 ul/li）*/
+    margin: 8px 0 0 0; /* 移除默认外边距（如果用 ul/li）*/
+    /* 确保菜单不会因为内容太长而溢出 */
+    overflow: hidden;
+  }
+
+  /* 菜单项样式 */
+  .menu-item {
+    padding: 7px 16px; /* 内边距 */
+    line-height: 22px; /* 行高 */
+    cursor: pointer; /* 鼠标悬停时显示手型 */
+    color: var(--el-text-color-regular); /* 文本颜色 */
+    font-size: 14px; /* 字体大小 */
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease; /* 添加过渡效果 */
+  }
+
+  /* 菜单项悬停样式 */
+  .menu-item:hover {
+    background-color: #f5f7fa; /* 悬停背景色 */
+    color: var(--el-color-primary); /* 悬停文本颜色 */
+  }
+
+  /* 当前激活菜单项样式 */
+  .menu-item.is-active {
+    font-weight: bold; /* 加粗显示 */
+    color: var(--el-color-primary); /* 使用主题色高亮 */
+    /* 可以添加背景色或其他样式 */
+  }
+
+  /* 过渡效果样式 */
+  .dropdown-fade-enter-active,
+  .dropdown-fade-leave-active {
+    transition: opacity 0.3s ease;
+  }
+  .dropdown-fade-enter-from,
+  .dropdown-fade-leave-to {
+    opacity: 0;
+  }
+  .current-lang-text {
+    font-size: 12px;
+  }
+</style>
+
+```
+
+创建`src/i18n/index.ts`
+```ts
+import { createI18n } from 'vue-i18n'
+import en from './lang/en'
+import zh from './lang/zh'
+let language = localStorage.getItem('language')
+const i18n = createI18n({
+  locale: language ? language : 'zh', // 默认是中文
+  //   fallbackLocale: 'en', // 语言切换的时候是英文
+  globalInjection: true, //全局配置$t
+  legacy: false, //vue3写法
+  messages: { en, zh },
+})
+
+export default i18n
+
+```
+
+创建`src/i18n/lang/en.ts`,`src/i18n/lang/zh.ts`
+
+```ts [zh.ts]
+// 中文语言包
+
+export default {
+  common: {
+    login: '登录',
+    logout: '退出登录',
+    home: '首页',
+    admin: '管理员',
+  },
+  login: {
+    username: '用户名',
+    password: '密码',
+    loginBtn: '立即登录',
+  },
+  greeting: {
+    morning: '早上好！',
+    noon: '上午好！',
+    afternoon: '下午好！',
+    evening: '晚上好！',
+  },
+  menu: {
+    system: '系统',
+  },
+}
+
+```
+
+```ts [en.ts]
+// 英文语言包
+
+export default {
+  common: {
+    login: 'Login',
+    logout: 'Logout',
+    home: 'Home',
+    admin: 'Administrator',
+  },
+  login: {
+    username: 'Username',
+    password: 'Password',
+    loginBtn: 'Sign In',
+  },
+  greeting: {
+    morning: 'Good Morning!',
+    noon: 'Good Morning!',
+    afternoon: 'Good Afternoon!',
+    evening: 'Good Evening!',
+  },
+  menu: {
+    system: 'System',
+  },
+}
+
+```
+
+`App.vue`
+```vue
+<template>
+  <el-config-provider :locale="ellocale">
+    <RouterView></RouterView>
+  </el-config-provider>
+</template>
+
+<script setup lang="ts">
+  import zhCn from 'element-plus/es/locale/lang/zh-cn'
+  import en from 'element-plus/es/locale/lang/en'
+
+  import { useI18n } from 'vue-i18n'
+  import { computed } from 'vue'
+
+  const { locale } = useI18n()
+  const ellocale = computed(() => (locale.value == 'zh' ? zhCn : en))
+</script>
+
+<style lang="scss" scoped></style>
+
+```
+
+`main.ts` 
+```ts
+import i18n from '@/i18n'
+
+app.use(i18n)
+```
+
+vue文件使用
+```vue
+<span>{{ t('menu.system') }}</span>
+```
+
+ts使用
+```ts
+  import { useI18n } from 'vue-i18n'
+  const { locale, t } = useI18n()
+  console.log(t('menu.system'))
+```
