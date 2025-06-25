@@ -627,6 +627,27 @@ app.mount('#app')
 
 ```
 
+### element 图标注册为全局组件
+`src/components/index.ts`
+```ts{4,11-13}[index.ts]
+import SvgIcon from './SvgIcon/index.vue'
+import type { App, Component } from 'vue'
+const components: { [name: string]: Component } = { SvgIcon }
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+
+export default {
+  install(app: App) {
+    Object.keys(components).forEach((key: string) => {
+      app.component(key, components[key])
+    })
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component)
+    }
+  },
+}
+
+```
+
 ## src别名的配置
 
 在开发项目的时候文件与文件关系可能很复杂，因此我们需要给src文件夹配置一个别名
