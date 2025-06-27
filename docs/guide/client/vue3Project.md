@@ -1647,7 +1647,6 @@ export default useUserStore
 ```bash
 pnpm install vue-i18n
 ```
-
 建个组件`/src/components/LanguageSwitcher/index.vue`
 ```vue
 <template>
@@ -1660,7 +1659,7 @@ pnpm install vue-i18n
     <!-- 触发器 -->
     <span class="switcher-trigger">
       <!-- 使用 Element Plus 的图标组件 -->
-      <el-icon :size="30">
+      <el-icon :size="15">
         <!-- <ChatDotRound />  -->
         <SvgIcon name="internationalization" height="19px" width="20px"></SvgIcon>
       </el-icon>
@@ -1774,74 +1773,94 @@ pnpm install vue-i18n
 
   /* 触发器样式 */
   .switcher-trigger {
-    display: inline-flex; /* 使图标居中对齐 */
+    display: inline-flex;
     align-items: center;
-    cursor: pointer; /* 鼠标悬停时显示手型 */
-    padding: 0 5px; /* 添加一些内边距 */
-    color: var(--el-text-color-regular); /* 使用 Element Plus 的默认文本颜色 */
-    transition: color 0.3s ease; /* 添加颜色过渡效果 */
+    cursor: pointer;
+    padding: 8px 12px;
+    /* background-color: rgba(64, 158, 255, 0.1); */
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    gap: 6px;
   }
 
   .switcher-trigger:hover {
-    color: var(--el-color-primary); /* 悬停时改变颜色 */
+    background-color: rgba(64, 158, 255, 0.2);
+    transform: translateY(-1px);
   }
 
   /* 自定义下拉菜单样式 */
   .dropdown-menu {
-    position: absolute; /* 绝对定位 */
-    top: 100%; /* 定位在触发器下方 */
-    right: 0; /* 可以根据需要调整 left 或 right */
-    /* left: 0; */
-    z-index: 100; /* 确保菜单在其他元素之上 */
-    background-color: #fff; /* 背景颜色 */
-    border: 1px solid #ebeef5; /* 边框 */
-    border-radius: 4px; /* 圆角 */
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1); /* 阴影 */
-    padding: 6px 0; /* 内边距 */
-    margin-top: 8px; /* 与触发器之间的间距 */
-    min-width: 100px; /* 最小宽度 */
-    list-style: none; /* 移除列表默认样式（如果用 ul/li）*/
-    margin: 8px 0 0 0; /* 移除默认外边距（如果用 ul/li）*/
-    /* 确保菜单不会因为内容太长而溢出 */
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 100;
+    background-color: #fff;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 8px;
+    margin-top: 8px;
+    min-width: 120px;
     overflow: hidden;
+    backdrop-filter: blur(10px);
   }
 
   /* 菜单项样式 */
   .menu-item {
-    padding: 7px 16px; /* 内边距 */
-    line-height: 22px; /* 行高 */
-    cursor: pointer; /* 鼠标悬停时显示手型 */
-    color: var(--el-text-color-regular); /* 文本颜色 */
-    font-size: 14px; /* 字体大小 */
-    transition:
-      background-color 0.3s ease,
-      color 0.3s ease; /* 添加过渡效果 */
+    padding: 10px 16px; 
+    line-height: 20px;
+    cursor: pointer;
+    color: #606266;
+    font-size: 14px;
+    border-radius: 6px; 
+    margin: 2px 0; 
+    transition: all 0.3s ease;
   }
 
   /* 菜单项悬停样式 */
   .menu-item:hover {
-    background-color: #f5f7fa; /* 悬停背景色 */
-    color: var(--el-color-primary); /* 悬停文本颜色 */
+    background-color: #f0f9ff; 
+    color: #409eff;
+    transform: translateX(4px); 
   }
 
   /* 当前激活菜单项样式 */
   .menu-item.is-active {
-    font-weight: bold; /* 加粗显示 */
-    color: var(--el-color-primary); /* 使用主题色高亮 */
-    /* 可以添加背景色或其他样式 */
+    font-weight: 600;
+    color: #409eff;
+    background-color: rgba(64, 158, 255, 0.1); 
   }
 
   /* 过渡效果样式 */
-  .dropdown-fade-enter-active,
-  .dropdown-fade-leave-active {
-    transition: opacity 0.3s ease;
+  .dropdown-fade-enter-active {
+    transition: all 0.3s ease;
   }
-  .dropdown-fade-enter-from,
+  .dropdown-fade-leave-active {
+    transition: all 0.2s ease;
+  }
+  .dropdown-fade-enter-from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95); 
+  }
   .dropdown-fade-leave-to {
     opacity: 0;
+    transform: translateY(-5px) scale(0.98); 
   }
   .current-lang-text {
-    font-size: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--el-color-primary);
+  }
+
+  @media (max-width: 768px) {
+    .dropdown-menu {
+      right: -10px; 
+      min-width: 100px;
+    }
+    
+    .current-lang-text {
+      display: none; 
+    }
   }
 </style>
 
