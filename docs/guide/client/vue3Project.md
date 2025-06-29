@@ -1640,6 +1640,51 @@ export default useUserStore
 
 ```
 
+### 持久化
+```bash
+npm i pinia-plugin-persistedstate
+
+yarn add pinia-plugin-persistedstate
+
+pnpm i pinia-plugin-persistedstate
+
+```
+
+`src/store/index.ts`
+```ts [index.ts]
+import { createPinia } from "pinia" //引入pinia
+import piniaPluginPersistedstate from 'pinia-plugin-persistedstate' //引入持久化插件
+ 
+const pinia = createPinia() //创建pinia实例
+pinia.use(piniaPluginPersistedstate) //将插件添加到 pinia 实例上
+ 
+export default pinia //导出pinia用于main.js注册
+```
+**基本使用**
+
+将 persist 选项设置为 true，整个 Store 将使用默认持久化配置保存。
+
+```ts{16}[user.ts]
+import { defineStore } from "pinia"
+ 
+const useUserInfoStore = defineStore('userInfo', {
+  // defineStore('userInfo',{})  userInfo就是这个仓库的名称name
+  state: () => ({
+    username:'赫赫',
+    age: 23,
+    like: 'girl',
+  }),
+  getters: {
+        ...........
+  },
+  action：{
+    .........
+  },
+  persist: true,
+})
+ 
+export default useUserInfoStore
+```
 
 
 ## i18n
@@ -1983,3 +2028,54 @@ ts使用
   const { locale, t } = useI18n()
   console.log(t('menu.system'))
 ```
+
+## nprogress
+
+```bash
+pnpm i nprogress
+```
+
+`vite-env.d.ts`
+```ts [vite-env.d.ts]
+declare module 'nprogress'
+```
+
+`src/permission.ts`
+```ts{12,18,3,4}
+// 路由鉴权
+import router from '@/router'
+import nprogress from 'nprogress'
+import 'nprogress/nprogress.css'
+
+// 全局前置守卫
+router.beforeEach((to, from, next) => {
+  // to: 即将要进入的目标路由对象
+  // from: 当前导航正要离开的路由
+  // next: 调用该方法后，才能进入下一个钩子
+
+  nprogress.start()
+  next()
+})
+
+// 全局后置守卫
+router.afterEach((to, from) => {
+  nprogress.done()
+})
+
+```
+
+`main.ts`
+```ts [main.ts]
+import './permission'
+```
+
+
+---
+
+项目地址：[地址](https://github.com/zxyang3636/vue3_admin_template)
+
+reference:[reference](https://gitee.com/jch1011/vue3_admin_template-bj1)
+
+笔记参考：[语雀](https://www.yuque.com/aosika-j6ubd/kucrsm/sggz6rsnecr0hhlf?singleDoc#WgHRr)
+
+[语雀](https://www.yuque.com/aosika-j6ubd/kucrsm/gyw43hwgahtz3tzg#faJNh)
