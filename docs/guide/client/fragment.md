@@ -2310,3 +2310,223 @@ public class CryptoUtils {
     }
 }
 ```
+
+
+
+ts工具类
+```ts
+// utils/cryptoUtils.ts
+import CryptoJS from 'crypto-js'
+import JSEncrypt from 'jsencrypt'
+import request from '@/utils/request' // 使用你现有的axios
+
+// ==================== 数据格式定义 ====================
+
+/**
+ * 加密数据包格式（和后端保持一致）
+ */
+export interface EncryptedPackage {
+  data: string           // AES加密后的数据
+  key: string            // RSA加密后的AES密钥
+  iv: string             // AES的IV
+  timestamp: number      // 时间戳
+  algorithm: string      // 算法标识
+  version: string        // 版本号
+}
+
+/**
+ * 🔐 简化版加密工具类
+ * 
+ * 只有3个主要方法：
+ * 1. getPublicKey() - 获取服务器公钥
+ * 2. encrypt() - 加密数据
+ * 3. sendRequest() - 发送加密请求
+ */
+export class CryptoUtils {
+  
+  // 缓存服务器公钥
+  private static serverPublicKey: string = ''
+  
+  /**
+   * 📥 第一步：获取服务器公钥
+   * 
+   * 什么时候用：应用启动时调用一次就行
+   * 
+   * @example
+   * ```typescript
+   * // 在App.vue或main.ts中调用
+   * await CryptoUtils.getPublicKey()
+   * ```
+   */
+  static async getPublicKey(): Promise<boolean> {
+    try {
+      console.log('📥 获取服务器公钥...')
+      
+      // 调用后端接口获取公钥
+      const result = await request({
+        url: '/crypto/public-key',
+        method: 'GET'
+      })
+      
+      // 保存公钥
+      this.serverPublicKey = result.publicKey
+      
+      console.log('✅ 公钥获取成功')
+      return true
+      
+    } catch (error) {
+      console.error('❌ 获取公钥失败:', error)
+      return false
+    }
+  }
+  
+  /**
+   * 🔐 第二步：加密数据
+   * 
+   * 什么时候用：要发送敏感数据时
+   * 
+   * @param data 要加密的数据（对象、字符串都行）
+   * @returns 加密后的数据包
+   * 
+   * @example
+   * ```typescript
+   * // 加密登录数据
+   * const loginData = { username: 'admin', password: '123456' }
+   * const encrypted = await CryptoUtils.encrypt(loginData)
+   * ```
+   */
+  static async encrypt(data: any): Promise<EncryptedPackage> {
+    try {
+      console.log('🔐 开始加密数据...')
+      
+      // 1. 检查是否有公钥
+      if (!this.serverPublicKey) {
+        console.log('🔑 没有公钥，先获取公钥...')
+        const success = await this.getPublicKey()
+        if (!success) {
+          throw new Error('获取公钥失败')
+        }
+      }
+      
+      // 2. 把数据转成JSON字符串
+      const jsonString = typeof data === 'string' ? data : JSON.stringify(data)
+      console.log('📝 数据长度:', jsonString.length, '字符')
+      
+      // 3. 生成随机的AES密钥和IV
+      const aesKey = CryptoJS.lib.WordArray.random(32).toString(CryptoJS.enc.Base64)  // 32字节 = 256位
+      const iv = CryptoJS.lib.WordArray.random(16).toString(CryptoJS.enc.Base64)      // 16字节 = 128位
+      console.log('🔑 AES密钥和IV生成完成')
+      
+      // 4. 用AES加密数据（这个快，适合大数据）
+      const aesKeyWords = CryptoJS.enc.Base64.parse(aesKey)
+      const ivWords = CryptoJS.enc.Base64.parse(iv)
+      
+      const encryptedData = CryptoJS.AES.encrypt(jsonString, aesKeyWords, {
+        iv: ivWords,
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      }).toString()
+      console.log('📦 AES加密完成')
+      
+      // 5. 用RSA加密AES密钥（这个安全，但只能加密小数据）
+      const jsEncrypt = new JSEncrypt()
+      jsEncrypt.setPublicKey(this.serverPublicKey)
+      
+      // 把AES密钥和IV打包成JSON，然后用RSA加密
+      const keyInfo = JSON.stringify({ key: aesKey, iv: iv })
+      const encryptedKey = jsEncrypt.encrypt(keyInfo)
+      
+      if (!encryptedKey) {
+        throw new Error('RSA加密失败')
+      }
+      console.log('🔐 RSA加密完成')
+      
+      // 6. 打包返回
+      const result: EncryptedPackage = {
+        data: encryptedData,
+        key: encryptedKey,
+        iv: iv,
+        timestamp: Date.now(),
+        algorithm: 'RSA-2048+AES-256-CBC',
+        version: '1.0'
+      }
+      
+      console.log('✅ 加密完成！')
+      return result
+      
+    } catch (error) {
+      console.error('❌ 加密失败:', error)
+      throw new Error(`加密失败: ${error.message}`)
+    }
+  }
+  
+  /**
+   * 📤 第三步：发送加密请求
+   * 
+   * 什么时候用：要发送敏感数据到后端时
+   * 
+   * @param url 接口地址
+   * @param data 要发送的数据
+   * @returns 后端响应的数据
+   * 
+   * @example
+   * ```typescript
+   * // 发送加密登录请求
+   * const loginData = { username: 'admin', password: '123456' }
+   * const result = await CryptoUtils.sendRequest('/auth/encrypted-login', loginData)
+   * 
+   * // 发送加密的用户信息
+   * const userInfo = { phone: '13800138000', idCard: '123456789' }
+   * await CryptoUtils.sendRequest('/user/update', userInfo)
+   * ```
+   */
+  static async sendRequest<T = any>(url: string, data: any): Promise<T> {
+    try {
+      console.log('📤 发送加密请求:', url)
+      
+      // 1. 先加密数据
+      const encryptedPackage = await this.encrypt(data)
+      
+      // 2. 发送请求（用你现有的request实例）
+      const response: T = await request({
+        url: url,
+        method: 'POST',
+        data: encryptedPackage
+      })
+      
+      console.log('✅ 请求发送成功')
+      return response
+      
+    } catch (error) {
+      console.error('❌ 发送请求失败:', error)
+      throw error
+    }
+  }
+  
+  /**
+   * 📊 查看当前状态
+   * 
+   * 什么时候用：调试时看看工具是否正常
+   */
+  static getStatus() {
+    return {
+      hasPublicKey: !!this.serverPublicKey,
+      publicKeyLength: this.serverPublicKey.length
+    }
+  }
+  
+  /**
+   * 🗑️ 清除公钥
+   * 
+   * 什么时候用：切换环境或重新初始化时
+   */
+  static clearPublicKey() {
+    this.serverPublicKey = ''
+    console.log('🗑️ 公钥已清除')
+  }
+}
+
+// 导出简化的使用方法
+export const encrypt = CryptoUtils.encrypt.bind(CryptoUtils)
+export const sendEncryptedRequest = CryptoUtils.sendRequest.bind(CryptoUtils)
+```
