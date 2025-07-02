@@ -601,7 +601,7 @@ docker build -t docker-demo:1.0 .
 docker build -t docker-demo:1.0 /root/demo
 ```
 
-#### 示例
+#### Java部署示例
 上传我们写好的`Dockerfile`和`jar包`
 ![image](https://s1.imagehub.cc/images/2025/04/27/856e1e28b4f28f5ef1187a6a3c07372b.png)
 
@@ -619,7 +619,7 @@ ENTRYPOINT ["java", "-jar", "/app.jar"]
 
 执行命令
 
-```Bash
+```{1,15,20,26,29}Bash
 [root@localhost demo]# docker build -t docker-demo:1.0 .
 
 [+] Building 35.5s (8/8) FINISHED                                                             docker:default
@@ -817,13 +817,36 @@ docker network connect xxxx-network nginx
 
 ### Mysql
 
-*挂载目录*
+```bash
+# 拉取最新版本
+docker pull mysql
 
-`/root/mysql/conf`
+# 拉取指定版本（推荐）
+docker pull mysql:8.0.35
+docker pull mysql:5.7.44
 
-`/root/mysql/data`
+# 查看已下载的镜像
+docker images | grep mysql
+```
 
-`/root/mysql/init`
+**创建项目目录结构**
+```bash
+# 创建MySQL项目目录
+mkdir -p /opt/mysql-docker/{data,conf,logs,init}
+cd /opt/mysql-docker
+
+# 目录结构说明
+tree
+/opt/mysql-docker/
+├── data/           # MySQL数据文件
+├── conf/           # MySQL配置文件
+├── logs/           # MySQL日志文件
+└── init/           # 初始化SQL脚本
+```
+
+
+
+**创建自定义配置文件**`my.cnf`
 
 cnf文件:
 ```  [xxx.cnf]
@@ -837,9 +860,11 @@ collation_server=utf8mb4_unicode_ci
 init_connect='SET NAMES utf8mb4'
 ```
 
-init是初始化文件:
-`xxx.sql`
+**创建初始化脚本**
 
+你的`xxx.sql`，sql文件
+
+**运行完整配置的MySQL容器**
 ```Bash
 docker run -d \
   --name mysql \
@@ -849,25 +874,275 @@ docker run -d \
   -v ./mysql/data:/var/lib/mysql \
   -v ./mysql/conf:/etc/mysql/conf.d \
   -v ./mysql/init:/docker-entrypoint-initdb.d \
+  -v ./mysql/logs:/var/log/mysql \
   --network hmall-network \
   --restart always \
   mysql:latest
+
+
+# 参数详解：
+# -e MYSQL_ROOT_PASSWORD: root密码
+# -v: 数据卷挂载
+# 你的xxx.sql文件放在 mysql/init下
+# my.cnf文件放在 mysql/conf下
 ```
 
+
+**验证MySQL运行**
+```bash
+# 查看容器状态
+docker ps | grep mysql
+
+# 查看容器日志
+docker logs my-mysql
+
+# 进入MySQL容器
+docker exec -it my-mysql bash
+
+# 在容器内连接MySQL
+mysql -u root -p
+# 输入密码：123456
+
+# 测试SQL命令
+SHOW DATABASES;
+SELECT VERSION();
+EXIT;
+```
+
+---
+
+#### 备份及迁移
+
+**查看当前环境**
+```bash
+# 查看当前MySQL容器信息
+docker ps | grep mysql
+docker inspect mysql | grep Image
+
+# 查看当前MySQL版本
+docker exec -it mysql mysql -u root -p -e "SELECT VERSION();"
+
+# 查看数据挂载情况
+docker inspect mysql | grep -A 10 "Mounts"
+```
+
+**检查新镜像版本**
+```bash
+# 查看可用的MySQL版本
+docker search mysql
+docker hub search mysql
+
+# 拉取目标版本镜像（先不要删除旧的）
+docker pull mysql:8.0.36  # 举例：升级到新版本
+```
+
+🛡️ **数据备份**
+
+使用mysqldump备份
+```bash
+# 创建备份目录
+mkdir -p /backup/mysql/$(date +%Y%m%d)
+cd /backup/mysql/$(date +%Y%m%d)
+
+# 备份所有数据库
+docker exec mysql mysqldump -u root -p123 --all-databases --routines --triggers > all_databases_backup.sql
+
+# 备份指定数据库（推荐分别备份）
+docker exec mysql mysqldump -u root -p123 --databases your_db1 your_db2 > databases_backup.sql
+
+# 验证备份文件
+ls -la *.sql
+head -n 20 all_databases_backup.sql
+```
+
+**删除旧容器（保留数据）**
+```bash
+# 只删除容器，不删除挂载的数据
+docker rm mysql
+
+# 确认数据目录依然存在
+ls -la /opt/mysql-docker/data/
+```
+
+**使用新镜像创建容器**
+```bash
+# 使用新镜像运行容器（使用相同的数据挂载）
+docker run -d \
+  --name mysql \
+  -p 3306:3306 \
+  -e TZ=Asia/Shanghai \
+  -e MYSQL_ROOT_PASSWORD=123 \
+  -v /opt/mysql-docker/data:/var/lib/mysql \
+  -v /opt/mysql-docker/conf:/etc/mysql/conf.d \
+  -v /opt/mysql-docker/init:/docker-entrypoint-initdb.d \
+  -v /opt/mysql-docker/logs:/var/log/mysql \
+  --restart always \
+  mysql:8.0.36  # 新的镜像版本
+```
+
+**验证和测试**
+```bash
+# 查看容器状态
+docker ps | grep mysql
+
+# 查看启动日志
+docker logs mysql
+
+# 连接MySQL验证
+docker exec -it mysql mysql -u root -p123 -e "SELECT VERSION();"
+
+# 验证数据完整性
+docker exec -it mysql mysql -u root -p123 -e "SHOW DATABASES;"
+docker exec -it mysql mysql -u root -p123 -e "USE your_database; SHOW TABLES;"
+
+# 测试应用连接
+# 启动你的应用，测试数据库连接和功能
+```
 
 
 ### Nginx
 
-*创建挂载目录*
+**创建项目目录**
+```bash
+mkdir -p /root/nginx/{conf,conf.d,html,logs,ssl}
+cd /root/nginx
 
-`/root/nginx/html/`
+# 查看目录结构
+tree
+/root/nginx/
+├── conf/           # 主配置目录
+├── conf.d/         # 站点配置目录
+├── html/           # 网站文件目录
+├── logs/           # 日志目录
+└── ssl/            # SSL证书目录
+```
 
-`/root/nginx/nginx.conf/`
+**主配置文件**
+```
+# 创建主配置文件
+cat > /root/nginx/conf/nginx.conf << 'EOF'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
 
-- 把`/root/nginx/nginx.conf`挂载到`/etc/nginx/nginx.conf`
-- 把`/root/nginx/html`挂载到`/usr/share/nginx/html`
+events {
+    worker_connections 1024;
+}
 
-配置文件中，这里不要写死，用于容器之间互相通信
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                   '$status $body_bytes_sent "$http_referer" '
+                   '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    access_log /var/log/nginx/access.log main;
+    
+    sendfile on;
+    keepalive_timeout 65;
+    
+    # 重要：包含conf.d目录下的所有配置文件
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF
+```
+
+
+**站点配置文件**
+```
+# 创建默认站点配置
+cat > /root/nginx/conf.d/default.conf << 'EOF'
+server {
+    listen 80;
+    server_name localhost;
+    
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+    
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log;
+    
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # API代理
+    location /api/ {
+        proxy_pass http://backend:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+```
+
+
+
+
+```Bash
+docker run -d \
+      --name nginx \
+      -p 80:80 \
+      -p 443:443 \
+      -v /root/nginx/conf.d/:/etc/nginx/conf.d \
+      -v /root/nginx/conf/nginx.conf:/etc/nginx/conf/nginx.conf \
+      -v /root/nginx/ssl:/etc/nginx/ssl \
+      -v /root/nginx/html:/usr/share/nginx/html \
+      -v /root/nginx/logs:/var/log/nginx \
+      --network xxx-network
+      --restart always \
+      nginx
+
+
+# 参数详解：
+# --name nginx: 容器名称
+# -p 80:80: HTTP端口映射
+# -p 443:443: HTTPS端口映射  
+# -v: 挂载配置、网站文件、日志等
+# --restart always: 自动重启
+```
+
+**验证部署**
+```bash
+# 查看容器状态
+docker ps | grep nginx
+
+# 查看Nginx日志
+docker logs nginx
+
+# 测试HTTP访问
+curl http://localhost
+curl -I http://localhost
+
+# 测试配置文件语法
+docker exec nginx nginx -t
+
+# 重新加载配置（无需重启）
+docker exec nginx nginx -s reload
+```
+
+---
+
+前端两个项目，admin端，客户端部署示例：
+
+```Bash
+docker run -d \
+  --name nginx \
+  -p 18080:18080 \
+  -p 18081:18081 \
+  -v /root/nginx/html:/usr/share/nginx/html \
+  -v /root/nginx/nginx.conf:/etc/nginx/nginx.conf \
+  --network hmall \
+  nginx
+```
+
+⚠️ 配置文件中，这里不要写死，用于容器之间互相通信；
+
+该容器名称是指后端部署的项目，使用容器名称代替ip地址 (因为项目重启后网桥ip是会变的)
 ![image](https://s1.imagehub.cc/images/2025/04/27/cc0397c00a235d59a1c9e787de4335b1.png)
 
 ```[nginx.conf]
@@ -922,30 +1197,219 @@ http {
 
 ```
 
-```Bash
-docker run -d \
-      --name nginx \
-      -p 80:80 \
-      -p 443:443 \
-      -v /root/nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf \
-      -v /root/nginx/conf/nginx.conf:/etc/nginx/conf/nginx.conf \
-      -v /root/nginx/ssl:/etc/nginx/ssl \
-      -v /root/nginx/html:/usr/share/nginx/html \
-      -v /root/nginx/logs:/var/log/nginx \
-      --network xxx-network
-      --restart always \
-      nginx
+
+### Redis
+**创建项目目录**
+```bash
+# 创建Redis项目目录
+mkdir -p /opt/redis-docker/{conf,data,logs}
+cd /opt/redis-docker
+
+# 目录结构说明
+tree
+/opt/redis-docker/
+├── conf/           # 配置文件目录
+├── data/           # 数据持久化目录
+└── logs/           # 日志文件目录
 ```
 
-```Bash
+**创建Redis配置文件**
+```[redis.conf]
+# 创建Redis配置文件
+cat > /opt/redis-docker/conf/redis.conf << 'EOF'
+# ==================== 基础配置 ====================
+# 绑定地址（0.0.0.0允许所有IP访问）
+bind 0.0.0.0
+
+# 端口号
+port 6379
+
+# 超时设置（0表示不超时）
+timeout 0
+
+# TCP keepalive
+tcp-keepalive 300
+
+# ==================== 安全配置 ====================
+# 设置密码（生产环境必须设置）
+requirepass your_redis_password_123
+
+# 禁用危险命令
+rename-command FLUSHDB ""
+rename-command FLUSHALL ""
+rename-command DEBUG ""
+rename-command CONFIG "CONFIG_d83jf93jf"
+
+# ==================== 持久化配置 ====================
+# RDB持久化配置
+save 900 1        # 900秒内至少1个key变化时保存
+save 300 10       # 300秒内至少10个key变化时保存
+save 60 10000     # 60秒内至少10000个key变化时保存
+
+# RDB文件名和位置
+dbfilename dump.rdb
+dir /data
+
+# 压缩RDB文件
+rdbcompression yes
+
+# 校验RDB文件
+rdbchecksum yes
+
+# AOF持久化配置
+appendonly yes
+appendfilename "appendonly.aof"
+appendfsync everysec     # 每秒同步一次
+
+# AOF重写配置
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+# ==================== 内存配置 ====================
+# 最大内存限制（根据服务器内存调整）
+maxmemory 1gb
+
+# 内存溢出策略
+maxmemory-policy allkeys-lru
+
+# ==================== 日志配置 ====================
+# 日志级别：debug, verbose, notice, warning
+loglevel notice
+
+# 日志文件（空表示输出到stdout）
+logfile /var/log/redis/redis-server.log
+
+# ==================== 性能优化 ====================
+# 数据库数量
+databases 16
+
+# 客户端连接数
+maxclients 10000
+
+# TCP缓冲区
+tcp-backlog 511
+
+# 惰性删除
+lazyfree-lazy-eviction yes
+lazyfree-lazy-expire yes
+lazyfree-lazy-server-del yes
+
+# ==================== 慢查询日志 ====================
+# 慢查询阈值（微秒）
+slowlog-log-slower-than 10000
+
+# 慢查询日志长度
+slowlog-max-len 128
+EOF
+```
+
+**运行Redis容器**
+```bash
 docker run -d \
-  --name nginx \
-  -p 18080:18080 \
-  -p 18081:18081 \
-  -v /root/nginx/html:/usr/share/nginx/html \
-  -v /root/nginx/nginx.conf:/etc/nginx/nginx.conf \
-  --network hmall \
-  nginx
+  --name redis-server \
+  -p 6379:6379 \
+  -v /opt/redis-docker/conf/redis.conf:/etc/redis/redis.conf \  # 挂载配置文件
+  -v /opt/redis-docker/data:/data \
+  -v /opt/redis-docker/logs:/var/log/redis \
+  --restart always \
+  redis:7.2-alpine \                    # ← 使用这个镜像
+  redis-server /etc/redis/redis.conf   # ← 执行这个命令
+
+# 流程说明：
+# 1. Docker拉取 redis:7.2-alpine 镜像
+# 2. 创建容器，挂载本地配置文件到容器的 /etc/redis/redis.conf
+# 3. 容器启动时执行命令：redis-server /etc/redis/redis.conf
+# 4. Redis读取配置文件，发现 requirepass 设置，启用密码认证
+```
+
+**验证Redis部署**
+```bash
+# 查看容器状态
+docker ps | grep redis
+
+# 查看Redis日志
+docker logs redis-server
+
+# 连接Redis（带密码）
+docker exec -it redis-server redis-cli -a your_redis_password_123
+
+# 或者不进入容器直接执行命令
+docker exec redis-server redis-cli -a your_redis_password_123 ping
+docker exec redis-server redis-cli -a your_redis_password_123 info
+```
+
+🧪 **Redis功能测试**
+```bash
+# 进入Redis CLI
+docker exec -it redis-server redis-cli -a your_redis_password_123
+
+# 测试基础操作
+127.0.0.1:6379> ping
+PONG
+
+# 字符串操作
+127.0.0.1:6379> set name "张三"
+OK
+127.0.0.1:6379> get name
+"张三"
+
+
+# 哈希操作
+127.0.0.1:6379> hset user:1 name "李四" age 25
+(integer) 2
+127.0.0.1:6379> hgetall user:1
+1) "name"
+2) "李四"
+3) "age"
+4) "25"
+
+# 查看数据库信息
+127.0.0.1:6379> info
+127.0.0.1:6379> dbsize
+
+# 退出
+127.0.0.1:6379> exit
+```
+
+🔧 **常用管理命令**
+```bash
+# 查看Redis容器状态
+docker ps | grep redis
+docker stats redis-server
+
+# 查看Redis日志
+docker logs redis-server
+docker logs -f redis-server --tail 100
+
+# 重启Redis容器
+docker restart redis-server
+
+# 停止/启动Redis容器
+docker stop redis-server
+docker start redis-server
+
+# 进入Redis容器
+docker exec -it redis-server redis-cli -a your_redis_password_123
+```
+
+**Redis命令**
+```bash
+# 查看Redis信息
+docker exec redis-server redis-cli -a your_redis_password_123 info
+docker exec redis-server redis-cli -a your_redis_password_123 info memory
+docker exec redis-server redis-cli -a your_redis_password_123 info clients
+
+# 查看配置
+docker exec redis-server redis-cli -a your_redis_password_123 config get "*"
+
+# 重新加载配置
+docker exec redis-server redis-cli -a your_redis_password_123 config rewrite
+
+# 查看慢查询
+docker exec redis-server redis-cli -a your_redis_password_123 slowlog get 10
+
+# 清空数据库（小心使用）
+docker exec redis-server redis-cli -a your_redis_password_123 flushdb
 ```
 
 

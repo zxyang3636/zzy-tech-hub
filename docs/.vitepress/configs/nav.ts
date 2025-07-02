@@ -60,10 +60,10 @@ export const nav: DefaultTheme.Config["nav"] = [
     text: "其他",
     items: [
       { text: "网址导航", link: "/guide/server/daoHang" },
-      { text: "片段", link: "/guide/client/fragment" },
+      { text: "杂项", link: "/guide/client/fragment" },
       // { text: "软件分享", link: "/preface" },
       // { text: "常用工具", link: "/configuration" },
-      { text: "ContactMe", link: "/api-examples" },
+      // { text: "ContactMe", link: "/api-examples" },
     ],
   },
 ];

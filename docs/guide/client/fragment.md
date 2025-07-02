@@ -1,4 +1,4 @@
-# 片段
+# 数据加解密
 
 ## RSA 加解密
 
@@ -1609,7 +1609,7 @@ const encrypted = AES.encrypt(data, key);
 前端 → 请求后端RSA公钥 → 后端返回公钥 → 前端缓存公钥
 
 阶段二：数据加密
-前端生成AES密钥 → 用AES加密数据 → 用RSA加密AES密钥 → 打包发送
+前端生成AES密钥 → 用AES加密数据 → 用RSA加密AES密钥 → 打包发送 (用RSA公钥加密的AES密钥、加密的数据包)
 
 阶段三：数据传输
 前端发送加密包 → 网络传输 → 后端接收加密包
@@ -1701,9 +1701,7 @@ pnpm install crypto-js jsencrypt
 pnpm install @types/crypto-js --save-dev
 ```
 
-```
 
-```
 
 java工具类
 ```java [CryptoUtils.java]
@@ -2529,4 +2527,71 @@ export class CryptoUtils {
 // 导出简化的使用方法
 export const encrypt = CryptoUtils.encrypt.bind(CryptoUtils)
 export const sendEncryptedRequest = CryptoUtils.sendRequest.bind(CryptoUtils)
+```
+
+
+### 🔤 Base64编码在加密中的作用
+
+🤔 为什么要转为Base64？
+
+核心原因：二进制数据传输问题
+```java
+// 原始密钥是什么样的？
+KeyPair keyPair = keyPairGenerator.generateKeyPair();
+PublicKey publicKey = keyPair.getPublic();
+
+// 获取原始字节数据
+byte[] publicKeyBytes = publicKey.getEncoded();
+System.out.println("原始字节数据: " + Arrays.toString(publicKeyBytes));
+// 输出：[48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13, 1, 1...]
+// 这是二进制数据，包含不可打印字符！
+
+// 如果直接转字符串会怎样？
+String badString = new String(publicKeyBytes);
+System.out.println("直接转字符串: " + badString);
+// 输出：0☺"0 ♪*☻H☻ù ♪♪☺♪☺☺♪♪○...乱码！❌
+```
+
+数据传输的挑战
+```ts
+// 网络传输场景
+const request = {
+    publicKey: "0☺\"0\r\u0006\t*☻H☻ù\r\u0001\u0001..."  // ❌ 包含控制字符
+}
+
+// JSON序列化会出错
+JSON.stringify(request)  // ❌ 可能报错或丢失数据
+
+// HTTP传输也会有问题
+fetch('/api/keys', {
+    body: JSON.stringify(request)  // ❌ 特殊字符可能被破坏
+})
+
+
+```
+
+🎯 Base64解决了什么问题？
+
+Base64的特点
+
+```txt
+Base64字符集：A-Z, a-z, 0-9, +, /（64个字符）
+- 所有字符都是可打印的
+- 不包含控制字符
+- 安全传输通过HTTP、JSON、XML等文本协议
+- 不会被各种系统误解或破坏
+```
+
+编码前后对比
+```java
+// 编码前：二进制字节
+byte[] keyBytes = {48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13};
+System.out.println("二进制: " + Arrays.toString(keyBytes));
+// 输出：[48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13]
+
+// 编码后：Base64字符串
+String base64String = Base64.encodeBase64String(keyBytes);
+System.out.println("Base64: " + base64String);
+// 输出：MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
+// 全部是可打印字符！✅
 ```
