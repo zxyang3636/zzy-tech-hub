@@ -60,12 +60,6 @@ RSA方式（非对称加密）：
 登录加解密流程
 ![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-07-01_14-54-52.png)
 
-
-
-
-
-
-
 **使用场景：**
 
 - 🔐 用户登录密码加密传输
@@ -91,8 +85,6 @@ RSA-4096位: ~1-3秒
 用户A (第一个请求): 等待500ms ❌ 体验差
 用户B (后续请求):   立即响应   ✅ 体验好
 ```
-
-
 
 📝 总结
 
@@ -272,8 +264,8 @@ const encrypted = AES.encrypt(data, key);
 逻辑反转：前端生成密钥对
 ![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-07-01_16-41-10.png)
 
-
 流程如下
+
 ```
 加密通信：
 
@@ -311,27 +303,28 @@ const encrypted = AES.encrypt(data, key);
 - ✅ 使用 Redis 存储临时密钥信息
   :::
 
-
 ## 最佳实践
+
 ```bash
 pnpm add jsencrypt crypto-js
 
 pnpm add -D @types/crypto-js
 ```
 
-**ts工具类**
+**ts 工具类**
+
 ```ts
 // src/utils/cryptoUtils.ts
 
-import JSEncrypt from 'jsencrypt'
-import CryptoJS from 'crypto-js'
+import JSEncrypt from "jsencrypt";
+import CryptoJS from "crypto-js";
 
 /**
  * RSA密钥对接口，定义了密钥对的结构
  */
 export interface RsaKeyPair {
-  publicKey: string // Base64编码的公钥
-  privateKey: string // Base64编码的私钥
+  publicKey: string; // Base64编码的公钥
+  privateKey: string; // Base64编码的私钥
 }
 
 /**
@@ -362,18 +355,20 @@ export class CryptoUtils {
    * 这个方法会阻塞主线程直到密钥生成完毕。
    * 对于需要立即获取密钥的简单场景很方便。
    */
-  public static generateKeyPairSync(keySize: 1024 | 2048 | 4096 = 2048): RsaKeyPair {
-    const encrypt = new JSEncrypt({ default_key_size: keySize.toString() })
+  public static generateKeyPairSync(
+    keySize: 1024 | 2048 | 4096 = 2048
+  ): RsaKeyPair {
+    const encrypt = new JSEncrypt({ default_key_size: keySize.toString() });
 
     // JSEncrypt 在实例化时会自动生成密钥
     // 我们可以直接获取它们
-    const publicKey = encrypt.getPublicKey()
-    const privateKey = encrypt.getPrivateKey()
+    const publicKey = encrypt.getPublicKey();
+    const privateKey = encrypt.getPrivateKey();
 
     return {
       publicKey,
       privateKey,
-    }
+    };
   }
 
   /**
@@ -386,10 +381,12 @@ export class CryptoUtils {
    * 推荐在生产环境中使用此方法，因为它不会阻塞UI线程。
    * 特别是生成4096位密钥时，同步方法可能会导致页面卡顿。
    */
-  public static generateKeyPairAsync(keySize: 1024 | 2048 | 4096 = 2048): Promise<RsaKeyPair> {
+  public static generateKeyPairAsync(
+    keySize: 1024 | 2048 | 4096 = 2048
+  ): Promise<RsaKeyPair> {
     return new Promise((resolve, reject) => {
       try {
-        const encrypt = new JSEncrypt({ default_key_size: keySize.toString() })
+        const encrypt = new JSEncrypt({ default_key_size: keySize.toString() });
 
         // JSEncrypt的密钥生成是在构造函数中同步执行的，
         // 但为了提供一个标准的异步接口，我们将其包装在Promise中。
@@ -397,17 +394,17 @@ export class CryptoUtils {
         const keyPair: RsaKeyPair = {
           publicKey: encrypt.getPublicKey(),
           privateKey: encrypt.getPrivateKey(),
-        }
+        };
 
         // 使用 setTimeout(0) 将解析操作推到下一个事件循环，
         // 模拟异步行为，让调用方可以一致地使用 .then()
         setTimeout(() => {
-          resolve(keyPair)
-        }, 0)
+          resolve(keyPair);
+        }, 0);
       } catch (error) {
-        reject(error)
+        reject(error);
       }
-    })
+    });
   }
 
   /**
@@ -416,10 +413,13 @@ export class CryptoUtils {
    * @param publicKeyBase64 Base64编码的RSA公钥字符串
    * @returns Base64编码的加密后字符串，如果加密失败则返回false
    */
-  public static rsaEncrypt(data: string, publicKeyBase64: string): string | false {
-    const encrypt = new JSEncrypt()
-    encrypt.setPublicKey(publicKeyBase64)
-    return encrypt.encrypt(data)
+  public static rsaEncrypt(
+    data: string,
+    publicKeyBase64: string
+  ): string | false {
+    const encrypt = new JSEncrypt();
+    encrypt.setPublicKey(publicKeyBase64);
+    return encrypt.encrypt(data);
   }
 
   /**
@@ -428,10 +428,13 @@ export class CryptoUtils {
    * @param privateKeyBase64 Base64编码的RSA私钥字符串
    * @returns 解密后的明文数据，如果解密失败则返回false
    */
-  public static rsaDecrypt(encryptedData: string, privateKeyBase64: string): string | false {
-    const decrypt = new JSEncrypt()
-    decrypt.setPrivateKey(privateKeyBase64)
-    return decrypt.decrypt(encryptedData)
+  public static rsaDecrypt(
+    encryptedData: string,
+    privateKeyBase64: string
+  ): string | false {
+    const decrypt = new JSEncrypt();
+    decrypt.setPrivateKey(privateKeyBase64);
+    return decrypt.decrypt(encryptedData);
   }
 
   // =================================================================================
@@ -444,8 +447,8 @@ export class CryptoUtils {
    * @returns Base64编码的AES密钥字符串
    */
   public static generateAesKey(keySize: 128 | 192 | 256 = 256): string {
-    const key = CryptoJS.lib.WordArray.random(keySize / 8)
-    return CryptoJS.enc.Base64.stringify(key)
+    const key = CryptoJS.lib.WordArray.random(keySize / 8);
+    return CryptoJS.enc.Base64.stringify(key);
   }
 
   /**
@@ -453,8 +456,8 @@ export class CryptoUtils {
    * @returns Base64编码的IV字符串 (16字节)
    */
   public static generateIv(): string {
-    const iv = CryptoJS.lib.WordArray.random(16)
-    return CryptoJS.enc.Base64.stringify(iv)
+    const iv = CryptoJS.lib.WordArray.random(16);
+    return CryptoJS.enc.Base64.stringify(iv);
   }
 
   /**
@@ -464,15 +467,19 @@ export class CryptoUtils {
    * @param ivBase64 Base64编码的IV
    * @returns Base64编码的加密后字符串
    */
-  public static aesEncrypt(data: string, keyBase64: string, ivBase64: string): string {
-    const key = CryptoJS.enc.Base64.parse(keyBase64)
-    const iv = CryptoJS.enc.Base64.parse(ivBase64)
+  public static aesEncrypt(
+    data: string,
+    keyBase64: string,
+    ivBase64: string
+  ): string {
+    const key = CryptoJS.enc.Base64.parse(keyBase64);
+    const iv = CryptoJS.enc.Base64.parse(ivBase64);
     const encrypted = CryptoJS.AES.encrypt(data, key, {
       iv: iv,
       mode: CryptoJS.mode.CBC,
       padding: CryptoJS.pad.Pkcs7,
-    })
-    return encrypted.toString()
+    });
+    return encrypted.toString();
   }
 
   /**
@@ -482,15 +489,19 @@ export class CryptoUtils {
    * @param ivBase64 Base64编码的IV
    * @returns 解密后的明文数据
    */
-  public static aesDecrypt(encryptedData: string, keyBase64: string, ivBase64: string): string {
-    const key = CryptoJS.enc.Base64.parse(keyBase64)
-    const iv = CryptoJS.enc.Base64.parse(ivBase64)
+  public static aesDecrypt(
+    encryptedData: string,
+    keyBase64: string,
+    ivBase64: string
+  ): string {
+    const key = CryptoJS.enc.Base64.parse(keyBase64);
+    const iv = CryptoJS.enc.Base64.parse(ivBase64);
     const decrypted = CryptoJS.AES.decrypt(encryptedData, key, {
       iv: iv,
       mode: CryptoJS.mode.CBC,
       padding: CryptoJS.pad.Pkcs7,
-    })
-    return decrypted.toString(CryptoJS.enc.Utf8)
+    });
+    return decrypted.toString(CryptoJS.enc.Utf8);
   }
 }
 
@@ -498,62 +509,69 @@ export class CryptoUtils {
 // 使用示例 - 你可以在Vue组件的 onMounted 钩子或某个方法中调用
 // =================================================================================
 export function runCryptoDemo() {
-  console.log('=============== 前端加密工具类示例 ===============')
+  console.log("=============== 前端加密工具类示例 ===============");
 
   // 模拟从后端获取到的RSA公钥
   // 这是一个示例公钥，实际项目中应通过API从后端获取
   const backendRsaPublicKey =
-    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyXQ2s/53/7Z+a/gJ' +
-    'cEIFGZfz9Jt1OV3a/1D/Shs8s5g8F7/C2sp7a0eC6X7JGjM2Zg6QcZJj/O' +
-    'LqJzYh+0Xl/gVcY8Y5T6Z8f6d8a7c6b9e/c8a9f6d7g8e/b7a6f5e8d9c0' +
-    'b/f6a8e7d5f4g3h2j1k0l/m5n7o9p1q2r4s6t8v0w+x3y5z7A9B1C3D5E7' +
-    'F9G1H3J5K7L9M1N3O5P7R9T1V3W5X7Z9A1B3C5D7E9F1G3H5J7K9L1M3N5' +
-    'O7P9R1T3V5W7X9Z1A3B5C7D9E1F3G5H7J9K1L3M5N7O9P1R3V5W7X9Z1A3' +
-    'B5C7D9E1F3G5H7J9K1L3M5N7O9P1R3V5W7X9Z1A3B5C7D9E1F3G5H7J9K' +
-    '1L3M5N7O9P1R3V5W7X9Z=='
+    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyXQ2s/53/7Z+a/gJ" +
+    "cEIFGZfz9Jt1OV3a/1D/Shs8s5g8F7/C2sp7a0eC6X7JGjM2Zg6QcZJj/O" +
+    "LqJzYh+0Xl/gVcY8Y5T6Z8f6d8a7c6b9e/c8a9f6d7g8e/b7a6f5e8d9c0" +
+    "b/f6a8e7d5f4g3h2j1k0l/m5n7o9p1q2r4s6t8v0w+x3y5z7A9B1C3D5E7" +
+    "F9G1H3J5K7L9M1N3O5P7R9T1V3W5X7Z9A1B3C5D7E9F1G3H5J7K9L1M3N5" +
+    "O7P9R1T3V5W7X9Z1A3B5C7D9E1F3G5H7J9K1L3M5N7O9P1R3V5W7X9Z1A3" +
+    "B5C7D9E1F3G5H7J9K1L3M5N7O9P1R3V5W7X9Z1A3B5C7D9E1F3G5H7J9K" +
+    "1L3M5N7O9P1R3V5W7X9Z==";
 
   // ==================== AES示例 ====================
-  console.log('\n=============== AES示例 ===============')
+  console.log("\n=============== AES示例 ===============");
   // 1. 生成AES密钥和IV
-  const aesKey = CryptoUtils.generateAesKey(256)
-  const iv = CryptoUtils.generateIv()
-  console.log('生成的AES密钥 (Base64):', aesKey)
-  console.log('生成的IV (Base64):', iv)
+  const aesKey = CryptoUtils.generateAesKey(256);
+  const iv = CryptoUtils.generateIv();
+  console.log("生成的AES密钥 (Base64):", aesKey);
+  console.log("生成的IV (Base64):", iv);
 
   // 2. AES加密
-  const aesOriginalText = '这是前端用AES加密的大量业务数据。'
-  const aesEncrypted = CryptoUtils.aesEncrypt(aesOriginalText, aesKey, iv)
-  console.log('AES加密后:', aesEncrypted)
+  const aesOriginalText = "这是前端用AES加密的大量业务数据。";
+  const aesEncrypted = CryptoUtils.aesEncrypt(aesOriginalText, aesKey, iv);
+  console.log("AES加密后:", aesEncrypted);
 
   // 3. AES解密 (仅用于演示)
-  const aesDecrypted = CryptoUtils.aesDecrypt(aesEncrypted, aesKey, iv)
-  console.log('AES解密后:', aesDecrypted)
-  console.log('AES加解密是否成功:', aesOriginalText === aesDecrypted)
+  const aesDecrypted = CryptoUtils.aesDecrypt(aesEncrypted, aesKey, iv);
+  console.log("AES解密后:", aesDecrypted);
+  console.log("AES加解密是否成功:", aesOriginalText === aesDecrypted);
 
   // ==================== 混合加密示例（推荐用法） ====================
-  console.log('\n=============== 混合加密示例 ===============')
+  console.log("\n=============== 混合加密示例 ===============");
   const sensitiveData = JSON.stringify({
-    username: 'frontend_user',
-    password: 'secure_password_123',
-    action: 'login',
-  })
-  console.log('原始敏感数据:', sensitiveData)
+    username: "frontend_user",
+    password: "secure_password_123",
+    action: "login",
+  });
+  console.log("原始敏感数据:", sensitiveData);
 
   // 1. 生成临时的AES密钥和IV
-  const sessionAesKey = CryptoUtils.generateAesKey(256)
-  const sessionIv = CryptoUtils.generateIv()
+  const sessionAesKey = CryptoUtils.generateAesKey(256);
+  const sessionIv = CryptoUtils.generateIv();
 
   // 2. 使用AES加密敏感数据
-  const encryptedData = CryptoUtils.aesEncrypt(sensitiveData, sessionAesKey, sessionIv)
-  console.log('AES加密后的数据:', encryptedData)
+  const encryptedData = CryptoUtils.aesEncrypt(
+    sensitiveData,
+    sessionAesKey,
+    sessionIv
+  );
+  console.log("AES加密后的数据:", encryptedData);
 
   // 3. 使用从后端获取的RSA公钥加密AES密钥
-  const encryptedAesKey = CryptoUtils.rsaEncrypt(sessionAesKey, backendRsaPublicKey)
+  const encryptedAesKey = CryptoUtils.rsaEncrypt(
+    sessionAesKey,
+    backendRsaPublicKey
+  );
   if (!encryptedAesKey) {
-    console.error('RSA加密AES密钥失败！')
-    return
+    console.error("RSA加密AES密钥失败！");
+    return;
   }
-  console.log('RSA加密后的AES密钥:', encryptedAesKey)
+  console.log("RSA加密后的AES密钥:", encryptedAesKey);
 
   // 4. 准备发送到后端的数据包
   const payload = {
@@ -561,17 +579,17 @@ export function runCryptoDemo() {
     data: encryptedData, // AES加密的业务数据
     iv: sessionIv, // AES的IV
     timestamp: Date.now(),
-  }
+  };
 
-  console.log('\n准备发送到后端的数据包:', JSON.stringify(payload, null, 2))
+  console.log("\n准备发送到后端的数据包:", JSON.stringify(payload, null, 2));
 
   // 5. 接下来可以通过axios等发送payload到后端
   // axios.post('/api/secure/data', payload).then(...)
 }
-
 ```
 
-**java工具类**
+**java 工具类**
+
 ```java
 package com.zzy.admin.utils;
 
@@ -890,21 +908,17 @@ public class CryptoUtils {
             e.printStackTrace();
         }
     }
-    
+
 }
 
 ```
 
+### Base64 编码在加密中的作用
 
-
-
-
-
-###  Base64编码在加密中的作用
-
-🤔 为什么要转为Base64？
+🤔 为什么要转为 Base64？
 
 核心原因：二进制数据传输问题
+
 ```java
 // 原始密钥是什么样的？
 KeyPair keyPair = keyPairGenerator.generateKeyPair();
@@ -923,26 +937,25 @@ System.out.println("直接转字符串: " + badString);
 ```
 
 数据传输的挑战
+
 ```ts
 // 网络传输场景
 const request = {
-    publicKey: "0☺\"0\r\u0006\t*☻H☻ù\r\u0001\u0001..."  // ❌ 包含控制字符
-}
+  publicKey: '0☺"0\r\u0006\t*☻H☻ù\r\u0001\u0001...', // ❌ 包含控制字符
+};
 
 // JSON序列化会出错
-JSON.stringify(request)  // ❌ 可能报错或丢失数据
+JSON.stringify(request); // ❌ 可能报错或丢失数据
 
 // HTTP传输也会有问题
-fetch('/api/keys', {
-    body: JSON.stringify(request)  // ❌ 特殊字符可能被破坏
-})
-
-
+fetch("/api/keys", {
+  body: JSON.stringify(request), // ❌ 特殊字符可能被破坏
+});
 ```
 
-🎯 Base64解决了什么问题？
+🎯 Base64 解决了什么问题？
 
-Base64的特点
+Base64 的特点
 
 ```txt
 Base64字符集：A-Z, a-z, 0-9, +, /（64个字符）
@@ -953,6 +966,7 @@ Base64字符集：A-Z, a-z, 0-9, +, /（64个字符）
 ```
 
 编码前后对比
+
 ```java
 // 编码前：二进制字节
 byte[] keyBytes = {48, -126, 1, 34, 48, 13, 6, 9, 42, -122, 72, -122, -9, 13};
@@ -966,8 +980,6 @@ System.out.println("Base64: " + base64String);
 // 全部是可打印字符！✅
 ```
 
-
-
 # Java Keystore
 
 `Java Keystore` (密钥库)，顾名思义，是一个用来**存储和管理密钥**（Keys）和证书（Certificates）的安全容器。
@@ -975,18 +987,19 @@ System.out.println("Base64: " + base64String);
 你可以把它想象成一个加密的保险箱。这个保险箱本身有一个主密码（storepass），用来打开它。保险箱里面可以放很多个带锁的小盒子，每个小盒子都装着敏感的东西（比如私钥或证书），并且每个小盒子也可以有自己独立的小锁密码（keypass）。
 
 核心特点：
+
 1. 是一个文件：它在物理上就是一个文件，常见后缀有.jks, .p12, .pfx。
 2. 内容是加密的：没有正确的密码，无法查看或使用里面的内容。
 3. 结构化存储：内部通过别名（alias）来唯一标识和区分每一个存储的条目（Entry）。
-4. Java原生支持：Java的java.security包提供了完整的API来创建、加载和操作Keystore。
+4. Java 原生支持：Java 的 java.security 包提供了完整的 API 来创建、加载和操作 Keystore。
 
 🎯 **为什么要用它？**
 
-在软件开发中，尤其是涉及到网络通信和数据安全时，我们不可避免地要处理各种密钥和证书。直接将这些敏感信息硬编码在代码里或明文存放在配置文件中是极其危险的。Keystore的出现就是为了解决这个问题。
+在软件开发中，尤其是涉及到网络通信和数据安全时，我们不可避免地要处理各种密钥和证书。直接将这些敏感信息硬编码在代码里或明文存放在配置文件中是极其危险的。Keystore 的出现就是为了解决这个问题。
 
-使用Keystore的核心目的：为了安全、统一地管理密钥和证书。
+使用 Keystore 的核心目的：为了安全、统一地管理密钥和证书。
 
-简单来说，不用Keystore就像把家里的钥匙直接挂在门上；用Keystore就像把钥匙锁在保险箱里
+简单来说，不用 Keystore 就像把家里的钥匙直接挂在门上；用 Keystore 就像把钥匙锁在保险箱里
 
 ```bash
 keytool -genkeypair \
@@ -1000,136 +1013,140 @@ keytool -genkeypair \
   -dname "CN=zzyang.top, OU=Tech, O=zzyang Inc, L=NanJing, ST=NanJing, C=CN"
 
 ```
+
 **参数说明**
 
 - -genkeypair
 
->作用：生成密钥对（包含公钥和私钥）
+> 作用：生成密钥对（包含公钥和私钥）
 >
->用途：是创建证书的基本命令
+> 用途：是创建证书的基本命令
 
 - -alias spring_admin
 
->作用：指定密钥对的别名
+> 作用：指定密钥对的别名
 >
->用途：用于在密钥库中标识和访问该密钥对
+> 用途：用于在密钥库中标识和访问该密钥对
 >
->实践建议：使用有意义的名称，如项目名或域名
+> 实践建议：使用有意义的名称，如项目名或域名
 
 - -keyalg RSA
 
->作用：指定加密算法为 RSA
+> 作用：指定加密算法为 RSA
 >
->用途：RSA 是一种非对称加密算法，广泛用于安全通信
+> 用途：RSA 是一种非对称加密算法，广泛用于安全通信
 >
->替代选项：也可以使用 DSA 或 EC 算法
+> 替代选项：也可以使用 DSA 或 EC 算法
 
 - -keysize 2048
 
->作用：指定密钥长度为 2048 位
+> 作用：指定密钥长度为 2048 位
 
->用途：决定加密强度
+> 用途：决定加密强度
 
->安全建议：2048 位是当前推荐的最小长度 可以使用 4096 位获得更高安全性 不建议使用低于 2048 位的密钥长度
+> 安全建议：2048 位是当前推荐的最小长度 可以使用 4096 位获得更高安全性 不建议使用低于 2048 位的密钥长度
 
 - -keystore zzy.jks
 
->作用：指定生成的密钥库文件名
+> 作用：指定生成的密钥库文件名
 >
->用途：存储证书和密钥的容器
+> 用途：存储证书和密钥的容器
 >
->文件格式： .jks：Java 密钥库格式 也可以使用 .p12 (PKCS12 格式) 
+> 文件格式： .jks：Java 密钥库格式 也可以使用 .p12 (PKCS12 格式)
 
 - -validity 3650
 
->作用：设置证书有效期为 3650 天（10年）
+> 作用：设置证书有效期为 3650 天（10 年）
 >
->用途：确定证书的生命周期
+> 用途：确定证书的生命周期
 >
->建议： 开发环境可以设置较长时间 生产环境建议 1-2 年，定期更新
+> 建议： 开发环境可以设置较长时间 生产环境建议 1-2 年，定期更新
 
 - -storepass '%U4t#N7k!Bv2^Ec9Zr0@Hx5Mp3qJw'
 
->作用：设置密钥库的访问密码
+> 作用：设置密钥库的访问密码
 >
->用途：保护密钥库的安全
+> 用途：保护密钥库的安全
 >
->安全建议： 使用强密码 安全保存密码 生产环境应使用密码管理系统
+> 安全建议： 使用强密码 安全保存密码 生产环境应使用密码管理系统
 
 - -keypass '%U4t#N7k!Bv2^Ec9Zr0@Hx5Mp3qJw'
 
 > 作用：设置密钥对的访问密码
 >
->用途：保护私钥的安全
+> 用途：保护私钥的安全
 >
->注意：通常与 storepass 设置相同值以简化管理
+> 注意：通常与 storepass 设置相同值以简化管理
 
 - -dname "CN=zzyang.top, OU=Tech, O=zzyang Inc, L=NanJing, ST=NanJing, C=CN"
 
->作用：设置证书主题信息
+> 作用：设置证书主题信息
 >
->各字段含义：
->CN (Common Name)：域名
+> 各字段含义：
+> CN (Common Name)：域名
 >
->OU (Organizational Unit)：组织单位
+> OU (Organizational Unit)：组织单位
 >
->O (Organization)：组织名称
+> O (Organization)：组织名称
 >
->L (Locality)：城市
+> L (Locality)：城市
 >
->ST (State)：省份/州
+> ST (State)：省份/州
 >
->C (Country)：国家代码
+> C (Country)：国家代码
 
+⚠️ **使用 Keystore 的注意事项**
 
+1. Keystore 文件本身的保护
 
-⚠️ **使用Keystore的注意事项**
-
-1. Keystore文件本身的保护
-- 不要提交到版本控制系统 (Git)：这是最最重要的一条！必须将.jks, .p12等文件添加到.gitignore中。
-- 严格控制文件权限：在服务器上，设置Keystore文件的权限，确保只有运行应用程序的用户才能读取它（例如，chmod 400 your_keystore.jks）。
-- 安全存放：不要将Keystore文件放在Web服务器的根目录或其他可被公开访问的路径下。应放在配置目录或专门的安全目录下（如/etc/certs/）。
-
+- 不要提交到版本控制系统 (Git)：这是最最重要的一条！必须将.jks, .p12 等文件添加到.gitignore 中。
+- 严格控制文件权限：在服务器上，设置 Keystore 文件的权限，确保只有运行应用程序的用户才能读取它（例如，chmod 400 your_keystore.jks）。
+- 安全存放：不要将 Keystore 文件放在 Web 服务器的根目录或其他可被公开访问的路径下。应放在配置目录或专门的安全目录下（如/etc/certs/）。
 
 2. 密码管理 (最关键的环节)
-- 使用强密码：为Keystore（storepass）和私钥条目（keypass）设置复杂的、无规律的强密码。
-- 不要硬编码密码：绝对不要在application.yml或Java代码中明文写入密码。
+
+- 使用强密码：为 Keystore（storepass）和私钥条目（keypass）设置复杂的、无规律的强密码。
+- 不要硬编码密码：绝对不要在 application.yml 或 Java 代码中明文写入密码。
 - 推荐的密码管理方式：
   - 环境变量：通过服务器的环境变量传入密码 (${KEYSTORE_PASSWORD})。这是最简单、最常用的方式。
-  - 配置中心：使用如Nacos, Apollo, Spring Cloud Config等配置中心来管理密码。
-  - Docker Secrets / Kubernetes Secrets：在容器化环境中，使用编排工具提供的Secrets管理机制。
-  - 云服务KMS/Vault：使用云厂商提供的密钥管理服务或HashiCorp Vault来管理密码。
+  - 配置中心：使用如 Nacos, Apollo, Spring Cloud Config 等配置中心来管理密码。
+  - Docker Secrets / Kubernetes Secrets：在容器化环境中，使用编排工具提供的 Secrets 管理机制。
+  - 云服务 KMS/Vault：使用云厂商提供的密钥管理服务或 HashiCorp Vault 来管理密码。
 
 3. 密钥和证书的生命周期管理
-- 定期轮换 (Rotation)：制定策略定期更换Keystore中的密钥和证书，以降低因密钥泄露造成的长期风险。
-- 备份与恢复：建立Keystore文件的备份和恢复机制。如果文件损坏或丢失，且没有备份，所有依赖它的加密/签名功能都会瘫痪。
-- 记录信息：记录好每个Keystore中每个别名（alias）对应的密钥用途、有效期等元数据，方便维护。
-4. 选择合适的Keystore类型
-- `JKS (.jks)`: Java的传统格式，兼容性好，但功能有限（如默认不支持存储对称密钥）。
-- `PKCS12 (.p12, .pfx)`: 推荐使用。这是一个国际标准，具有更好的跨平台兼容性，可以被Java, .NET, Python, OpenSSL等大多数工具和语言识别。它也能存储私钥、证书和对称密钥。
-- `JCEKS`: 如果你需要存储对称密钥（如AES密钥），这是一个不错的选择，比JKS更强大。
+
+- 定期轮换 (Rotation)：制定策略定期更换 Keystore 中的密钥和证书，以降低因密钥泄露造成的长期风险。
+- 备份与恢复：建立 Keystore 文件的备份和恢复机制。如果文件损坏或丢失，且没有备份，所有依赖它的加密/签名功能都会瘫痪。
+- 记录信息：记录好每个 Keystore 中每个别名（alias）对应的密钥用途、有效期等元数据，方便维护。
+
+4. 选择合适的 Keystore 类型
+
+- `JKS (.jks)`: Java 的传统格式，兼容性好，但功能有限（如默认不支持存储对称密钥）。
+- `PKCS12 (.p12, .pfx)`: 推荐使用。这是一个国际标准，具有更好的跨平台兼容性，可以被 Java, .NET, Python, OpenSSL 等大多数工具和语言识别。它也能存储私钥、证书和对称密钥。
+- `JCEKS`: 如果你需要存储对称密钥（如 AES 密钥），这是一个不错的选择，比 JKS 更强大。
 
 **总结**
+
 - 是什么：一个加密的文件保险箱，用于安全存储密钥和证书。
 - 为什么用：为了安全（避免明文密钥）、集中管理（避免密钥散落）、解耦（更换密钥不改代码）和标准化。
-- 注意事项：保护好文件本身（别上传Git），保护好密码（别硬编码），做好备份和轮换，并选择合适的格式（推荐PKCS12）。
+- 注意事项：保护好文件本身（别上传 Git），保护好密码（别硬编码），做好备份和轮换，并选择合适的格式（推荐 PKCS12）。
 
-
-## jwt联合
+## jwt 联合
 
 在`application.yml`进行配置
+
 ```yml [application.yml]
 spring-admin:
   jwt:
     location: classpath:zzy.jks
     alias: spring_admin
-    password: '%U4t#N7k!Bv2^Ec9*Zr0@Hx5*Mp3qJw'
-    expiration: 2    # 访问令牌过期时间（小时）
-    refresh: 168      # 刷新令牌过期时间（小时，7天）
+    password: "%U4t#N7k!Bv2^Ec9*Zr0@Hx5*Mp3qJw"
+    expiration: 2 # 访问令牌过期时间（小时）
+    refresh: 168 # 刷新令牌过期时间（小时，7天）
 ```
 
+在 config 中配置类
 
-在config中配置类
 ```java [JwtProperties.java]
 @Data
 @Component
@@ -1161,7 +1178,8 @@ public class JwtProperties {
 }
 ```
 
-jwt工具类
+jwt 工具类
+
 ```java
 @Slf4j
 @Component
@@ -1177,17 +1195,17 @@ public class JwtUtil {
      * JWT 签名算法
      */
     private static final SignatureAlgorithm SIGNATURE_ALGORITHM = SignatureAlgorithm.RS256;  // 使用RS256算法
-    
+
     /**
      * JWT 中用户ID的键名
      */
     private static final String USER_ID_KEY = "userId";
-    
+
     /**
      * JWT 中用户名的键名
      */
     private static final String USERNAME_KEY = "username";
-    
+
     /**
      * JWT 中用户名的键名
      */
@@ -1206,9 +1224,9 @@ public class JwtUtil {
      */
     private static final String REFRESH_TOKEN_TYPE = "refresh";
 
-    
 
-    
+
+
     /**
      * 初始化方法，在Bean创建后执行
      */
@@ -1244,7 +1262,7 @@ public class JwtUtil {
             throw new RuntimeException("初始化JWT工具类失败，请检查JKS配置", e);
         }
     }
-    
+
       /**
      * 生成 JWT 访问令牌
      */
@@ -1290,11 +1308,11 @@ public class JwtUtil {
             throw new AuthException("生成令牌失败");
         }
     }
-    
-    
+
+
     /**
      * 解析 JWT 令牌
-     * 
+     *
      * @param token JWT令牌
      * @return Claims对象，包含令牌中的所有信息
      * @throws AuthException 当令牌无效、过期或解析失败时抛出
@@ -1303,14 +1321,14 @@ public class JwtUtil {
         if (StrUtil.isBlank(token)) {
             throw new AuthException("令牌不能为空");
         }
-        
+
         try {
             return Jwts.parserBuilder()
                     .setSigningKey(this.publicKey)  // ⬅️
                     .build()
                     .parseClaimsJws(token)
                     .getBody();
-            
+
         } catch (ExpiredJwtException e) {
             // log.warn("JWT令牌已过期: {}", e.getMessage());
             throw new AuthException("访问令牌已过期，请重新登录");
@@ -1331,10 +1349,10 @@ public class JwtUtil {
             throw new AuthException("令牌解析失败");
         }
     }
-    
+
     /**
      * 验证 JWT 令牌是否有效
-     * 
+     *
      * @param token JWT令牌
      * @return true-有效，false-无效
      */
@@ -1347,17 +1365,17 @@ public class JwtUtil {
             return false;
         }
     }
-    
+
     /**
      * 从令牌中获取用户ID
-     * 
+     *
      * @param token JWT令牌
      * @return 用户ID
      */
     public Long getUserIdFromToken(String token) {
         Claims claims = parseToken(token);
         Object userId = claims.get(USER_ID_KEY);
-        
+
         try {
             if (userId instanceof Number) {
                 return ((Number) userId).longValue();
@@ -1370,10 +1388,10 @@ public class JwtUtil {
             throw new AuthException("令牌中用户ID格式错误: " + userId);
         }
     }
-    
+
     /**
      * 从令牌中获取用户名
-     * 
+     *
      * @param token JWT令牌
      * @return 用户名
      */
@@ -1384,7 +1402,7 @@ public class JwtUtil {
 
     /**
      * 从令牌中获取用户昵称
-     * 
+     *
      * @param token JWT令牌
      * @return 用户昵称
      */
@@ -1393,10 +1411,10 @@ public class JwtUtil {
         return claims.get(NICKNAME_KEY, String.class);
     }
 
-    
+
     /**
      * 获取令牌的过期时间
-     * 
+     *
      * @param token JWT令牌
      * @return 过期时间
      */
@@ -1404,10 +1422,10 @@ public class JwtUtil {
         Claims claims = parseToken(token);
         return claims.getExpiration();
     }
-    
+
     /**
      * 获取令牌的签发时间
-     * 
+     *
      * @param token JWT令牌
      * @return 签发时间
      */
@@ -1415,10 +1433,10 @@ public class JwtUtil {
         Claims claims = parseToken(token);
         return claims.getIssuedAt();
     }
-    
+
     /**
      * 获取令牌中的所有声明信息
-     * 
+     *
      * @param token JWT令牌
      * @return 包含所有声明的Map
      */
@@ -1426,10 +1444,10 @@ public class JwtUtil {
         Claims claims = parseToken(token);
         return new HashMap<>(claims);
     }
-    
+
     /**
      * 检查令牌类型是否为刷新令牌
-     * 
+     *
      * @param token JWT令牌
      * @return true-是刷新令牌，false-是访问令牌
      */
@@ -1440,6 +1458,24 @@ public class JwtUtil {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * 获取Base64编码的公钥字符串
+     *
+     * @return Base64编码的公钥
+     */
+    public String getPublicKey() {
+        return Base64.getEncoder().encodeToString(this.publicKey.getEncoded());
+    }
+
+    /**
+     * 获取Base64编码的私钥字符串
+     *
+     * @return Base64编码的私钥
+     */
+    public String getPrivateKey() {
+        return Base64.getEncoder().encodeToString(this.privateKey.getEncoded());
     }
 
 }
