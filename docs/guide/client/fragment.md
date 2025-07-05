@@ -965,3 +965,482 @@ System.out.println("Base64: " + base64String);
 // 输出：MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
 // 全部是可打印字符！✅
 ```
+
+
+
+# Java Keystore
+
+`Java Keystore` (密钥库)，顾名思义，是一个用来**存储和管理密钥**（Keys）和证书（Certificates）的安全容器。
+
+你可以把它想象成一个加密的保险箱。这个保险箱本身有一个主密码（storepass），用来打开它。保险箱里面可以放很多个带锁的小盒子，每个小盒子都装着敏感的东西（比如私钥或证书），并且每个小盒子也可以有自己独立的小锁密码（keypass）。
+
+核心特点：
+1. 是一个文件：它在物理上就是一个文件，常见后缀有.jks, .p12, .pfx。
+2. 内容是加密的：没有正确的密码，无法查看或使用里面的内容。
+3. 结构化存储：内部通过别名（alias）来唯一标识和区分每一个存储的条目（Entry）。
+4. Java原生支持：Java的java.security包提供了完整的API来创建、加载和操作Keystore。
+
+🎯 **为什么要用它？**
+
+在软件开发中，尤其是涉及到网络通信和数据安全时，我们不可避免地要处理各种密钥和证书。直接将这些敏感信息硬编码在代码里或明文存放在配置文件中是极其危险的。Keystore的出现就是为了解决这个问题。
+
+使用Keystore的核心目的：为了安全、统一地管理密钥和证书。
+
+简单来说，不用Keystore就像把家里的钥匙直接挂在门上；用Keystore就像把钥匙锁在保险箱里
+
+```bash
+keytool -genkeypair \
+  -alias spring_admin \
+  -keyalg RSA \
+  -keysize 2048 \
+  -keystore zzy.jks \
+  -validity 3650 \
+  -storepass '%U4t#N7k!Bv2^Ec9*Zr0@Hx5*Mp3qJw' \
+  -keypass '%U4t#N7k!Bv2^Ec9*Zr0@Hx5*Mp3qJw' \
+  -dname "CN=zzyang.top, OU=Tech, O=zzyang Inc, L=NanJing, ST=NanJing, C=CN"
+
+```
+**参数说明**
+
+- -genkeypair
+
+>作用：生成密钥对（包含公钥和私钥）
+>
+>用途：是创建证书的基本命令
+
+- -alias spring_admin
+
+>作用：指定密钥对的别名
+>
+>用途：用于在密钥库中标识和访问该密钥对
+>
+>实践建议：使用有意义的名称，如项目名或域名
+
+- -keyalg RSA
+
+>作用：指定加密算法为 RSA
+>
+>用途：RSA 是一种非对称加密算法，广泛用于安全通信
+>
+>替代选项：也可以使用 DSA 或 EC 算法
+
+- -keysize 2048
+
+>作用：指定密钥长度为 2048 位
+
+>用途：决定加密强度
+
+>安全建议：2048 位是当前推荐的最小长度 可以使用 4096 位获得更高安全性 不建议使用低于 2048 位的密钥长度
+
+- -keystore zzy.jks
+
+>作用：指定生成的密钥库文件名
+>
+>用途：存储证书和密钥的容器
+>
+>文件格式： .jks：Java 密钥库格式 也可以使用 .p12 (PKCS12 格式) 
+
+- -validity 3650
+
+>作用：设置证书有效期为 3650 天（10年）
+>
+>用途：确定证书的生命周期
+>
+>建议： 开发环境可以设置较长时间 生产环境建议 1-2 年，定期更新
+
+- -storepass '%U4t#N7k!Bv2^Ec9Zr0@Hx5Mp3qJw'
+
+>作用：设置密钥库的访问密码
+>
+>用途：保护密钥库的安全
+>
+>安全建议： 使用强密码 安全保存密码 生产环境应使用密码管理系统
+
+- -keypass '%U4t#N7k!Bv2^Ec9Zr0@Hx5Mp3qJw'
+
+> 作用：设置密钥对的访问密码
+>
+>用途：保护私钥的安全
+>
+>注意：通常与 storepass 设置相同值以简化管理
+
+- -dname "CN=zzyang.top, OU=Tech, O=zzyang Inc, L=NanJing, ST=NanJing, C=CN"
+
+>作用：设置证书主题信息
+>
+>各字段含义：
+>CN (Common Name)：域名
+>
+>OU (Organizational Unit)：组织单位
+>
+>O (Organization)：组织名称
+>
+>L (Locality)：城市
+>
+>ST (State)：省份/州
+>
+>C (Country)：国家代码
+
+
+
+⚠️ **使用Keystore的注意事项**
+
+1. Keystore文件本身的保护
+- 不要提交到版本控制系统 (Git)：这是最最重要的一条！必须将.jks, .p12等文件添加到.gitignore中。
+- 严格控制文件权限：在服务器上，设置Keystore文件的权限，确保只有运行应用程序的用户才能读取它（例如，chmod 400 your_keystore.jks）。
+- 安全存放：不要将Keystore文件放在Web服务器的根目录或其他可被公开访问的路径下。应放在配置目录或专门的安全目录下（如/etc/certs/）。
+
+
+2. 密码管理 (最关键的环节)
+- 使用强密码：为Keystore（storepass）和私钥条目（keypass）设置复杂的、无规律的强密码。
+- 不要硬编码密码：绝对不要在application.yml或Java代码中明文写入密码。
+- 推荐的密码管理方式：
+  - 环境变量：通过服务器的环境变量传入密码 (${KEYSTORE_PASSWORD})。这是最简单、最常用的方式。
+  - 配置中心：使用如Nacos, Apollo, Spring Cloud Config等配置中心来管理密码。
+  - Docker Secrets / Kubernetes Secrets：在容器化环境中，使用编排工具提供的Secrets管理机制。
+  - 云服务KMS/Vault：使用云厂商提供的密钥管理服务或HashiCorp Vault来管理密码。
+
+3. 密钥和证书的生命周期管理
+- 定期轮换 (Rotation)：制定策略定期更换Keystore中的密钥和证书，以降低因密钥泄露造成的长期风险。
+- 备份与恢复：建立Keystore文件的备份和恢复机制。如果文件损坏或丢失，且没有备份，所有依赖它的加密/签名功能都会瘫痪。
+- 记录信息：记录好每个Keystore中每个别名（alias）对应的密钥用途、有效期等元数据，方便维护。
+4. 选择合适的Keystore类型
+- `JKS (.jks)`: Java的传统格式，兼容性好，但功能有限（如默认不支持存储对称密钥）。
+- `PKCS12 (.p12, .pfx)`: 推荐使用。这是一个国际标准，具有更好的跨平台兼容性，可以被Java, .NET, Python, OpenSSL等大多数工具和语言识别。它也能存储私钥、证书和对称密钥。
+- `JCEKS`: 如果你需要存储对称密钥（如AES密钥），这是一个不错的选择，比JKS更强大。
+
+**总结**
+- 是什么：一个加密的文件保险箱，用于安全存储密钥和证书。
+- 为什么用：为了安全（避免明文密钥）、集中管理（避免密钥散落）、解耦（更换密钥不改代码）和标准化。
+- 注意事项：保护好文件本身（别上传Git），保护好密码（别硬编码），做好备份和轮换，并选择合适的格式（推荐PKCS12）。
+
+
+## jwt联合
+
+在`application.yml`进行配置
+```yml [application.yml]
+spring-admin:
+  jwt:
+    location: classpath:zzy.jks
+    alias: spring_admin
+    password: '%U4t#N7k!Bv2^Ec9*Zr0@Hx5*Mp3qJw'
+    expiration: 2    # 访问令牌过期时间（小时）
+    refresh: 168      # 刷新令牌过期时间（小时，7天）
+```
+
+
+在config中配置类
+```java [JwtProperties.java]
+@Data
+@Component
+@ConfigurationProperties(prefix = "spring-admin.jwt")
+public class JwtProperties {
+
+    /**
+     * 密钥库 (JKS) 文件的位置, Spring Boot 会自动解析 classpath: 或 file:
+     */
+    private Resource location;
+    /**
+     * 密钥库中密钥条目的别名
+     */
+    private String alias;
+    /**
+     * 密钥库和私钥的密码
+     */
+    private String password;
+
+    /**
+     * JWT 访问令牌过期时间（小时）
+     */
+    private Integer expiration = 2;
+
+    /**
+     * JWT 刷新令牌过期时间（小时）
+     */
+    private Integer refresh = 168;
+}
+```
+
+jwt工具类
+```java
+@Slf4j
+@Component
+public class JwtUtil {
+    @Autowired
+    private JwtProperties jwtProperties; // 注入JKS配置
+
+    private PrivateKey privateKey; // 用于签名的私钥
+    private PublicKey publicKey;   // 用于验签的公钥
+
+
+    /**
+     * JWT 签名算法
+     */
+    private static final SignatureAlgorithm SIGNATURE_ALGORITHM = SignatureAlgorithm.RS256;  // 使用RS256算法
+    
+    /**
+     * JWT 中用户ID的键名
+     */
+    private static final String USER_ID_KEY = "userId";
+    
+    /**
+     * JWT 中用户名的键名
+     */
+    private static final String USERNAME_KEY = "username";
+    
+    /**
+     * JWT 中用户名的键名
+     */
+    private static final String NICKNAME_KEY = "nickname";
+
+    /**
+     * JWT 中令牌类型的键名
+     */
+    private static final String TOKEN_TYPE_KEY = "type";
+    /**
+     * JWT 中访问令牌类型的值
+     */
+    private static final String ACCESS_TOKEN_TYPE = "access";
+    /**
+     * JWT 中刷新令牌类型的值
+     */
+    private static final String REFRESH_TOKEN_TYPE = "refresh";
+
+    
+
+    
+    /**
+     * 初始化方法，在Bean创建后执行
+     */
+    @PostConstruct
+    public void init() {
+        try {
+            Resource resource = jwtProperties.getLocation();
+            String password = jwtProperties.getPassword();
+            String alias = jwtProperties.getAlias();
+
+            if (resource == null || !resource.exists()) {
+                throw new IllegalStateException("JWT密钥库文件未找到，请检查配置: " + jwtProperties.getLocation());
+            }
+
+            KeyStore keyStore = KeyStore.getInstance("JKS");
+            try (InputStream is = resource.getInputStream()) {
+                keyStore.load(is, password.toCharArray());
+            }
+
+            // 从密钥库中获取私钥和公钥
+            this.privateKey = (PrivateKey) keyStore.getKey(alias, password.toCharArray());
+            this.publicKey = keyStore.getCertificate(alias).getPublicKey();
+
+            if (this.privateKey == null || this.publicKey == null) {
+                throw new IllegalStateException("在JKS文件中找不到别名为 '" + alias + "' 的密钥对");
+            }
+
+            // log.info("JWT工具类初始化成功，使用RS256非对称加密。");
+
+        } catch (Exception e) {
+            log.error("初始化JWT工具类失败，无法加载JKS密钥库", e);
+            // 抛出运行时异常，使服务启动失败，以便及时发现配置问题
+            throw new RuntimeException("初始化JWT工具类失败，请检查JKS配置", e);
+        }
+    }
+    
+      /**
+     * 生成 JWT 访问令牌
+     */
+    public String generateAccessToken(Long userId, String username, String nickname) {
+        return generateToken(userId, username, nickname, jwtProperties.getExpiration(), ACCESS_TOKEN_TYPE);
+    }
+
+    /**
+     * 生成 JWT 刷新令牌
+     */
+    public String generateRefreshToken(Long userId, String username, String nickname) {
+        return generateToken(userId, username, nickname, jwtProperties.getRefresh(), REFRESH_TOKEN_TYPE);
+    }
+
+    /**
+     * 通用令牌生成方法
+     */
+    private String generateToken(Long userId, String username, String nickname, Integer ttl, String tokenType) {
+        if (userId == null || username == null || username.trim().isEmpty()) {
+            throw new AuthException("用户ID和用户名不能为空");
+        }
+
+        try {
+            Date now = new Date();
+            Date expiration = new Date(now.getTime() + ttl * 60 * 60 * 1000);
+
+            Map<String, Object> claims = new HashMap<>();
+            claims.put(USER_ID_KEY, userId);
+            claims.put(USERNAME_KEY, username);
+            claims.put(NICKNAME_KEY, nickname);
+            claims.put(TOKEN_TYPE_KEY, tokenType);
+
+            return Jwts.builder()
+                    .setClaims(claims)
+                    .setSubject(username)
+                    .setIssuedAt(now)
+                    .setExpiration(expiration)
+                    .signWith(this.privateKey, SIGNATURE_ALGORITHM) //  ⬅️使用私钥和RS256签名
+                    .compact();
+
+        } catch (Exception e) {
+            log.error("生成JWT失败，用户ID: {}, 用户名: {}", userId, username, e);
+            throw new AuthException("生成令牌失败");
+        }
+    }
+    
+    
+    /**
+     * 解析 JWT 令牌
+     * 
+     * @param token JWT令牌
+     * @return Claims对象，包含令牌中的所有信息
+     * @throws AuthException 当令牌无效、过期或解析失败时抛出
+     */
+    public Claims parseToken(String token) {
+        if (StrUtil.isBlank(token)) {
+            throw new AuthException("令牌不能为空");
+        }
+        
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(this.publicKey)  // ⬅️
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+            
+        } catch (ExpiredJwtException e) {
+            // log.warn("JWT令牌已过期: {}", e.getMessage());
+            throw new AuthException("访问令牌已过期，请重新登录");
+        } catch (UnsupportedJwtException e) {
+            // log.warn("不支持的JWT令牌: {}", e.getMessage());
+            throw new AuthException("不支持的令牌格式");
+        } catch (MalformedJwtException e) {
+            // log.warn("JWT令牌格式错误: {}", e.getMessage());
+            throw new AuthException("令牌格式错误");
+        } catch (SecurityException e) {
+            // log.warn("JWT令牌签名验证失败: {}", e.getMessage());
+            throw new AuthException("令牌签名验证失败");
+        } catch (IllegalArgumentException e) {
+            // log.warn("JWT令牌参数无效: {}", e.getMessage());
+            throw new AuthException("令牌参数无效");
+        } catch (Exception e) {
+            log.error("解析JWT令牌异常", e);
+            throw new AuthException("令牌解析失败");
+        }
+    }
+    
+    /**
+     * 验证 JWT 令牌是否有效
+     * 
+     * @param token JWT令牌
+     * @return true-有效，false-无效
+     */
+    public boolean validateToken(String token) {
+        try {
+            parseToken(token);
+            return true;
+        } catch (AuthException e) {
+            // log.debug("JWT令牌验证失败: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 从令牌中获取用户ID
+     * 
+     * @param token JWT令牌
+     * @return 用户ID
+     */
+    public Long getUserIdFromToken(String token) {
+        Claims claims = parseToken(token);
+        Object userId = claims.get(USER_ID_KEY);
+        
+        try {
+            if (userId instanceof Number) {
+                return ((Number) userId).longValue();
+            } else if (userId instanceof String) {
+                return Long.valueOf((String) userId);
+            } else {
+                throw new AuthException("令牌中用户ID类型无效: " + userId.getClass().getName());
+            }
+        } catch (NumberFormatException e) {
+            throw new AuthException("令牌中用户ID格式错误: " + userId);
+        }
+    }
+    
+    /**
+     * 从令牌中获取用户名
+     * 
+     * @param token JWT令牌
+     * @return 用户名
+     */
+    public String getUsernameFromToken(String token) {
+        Claims claims = parseToken(token);
+        return claims.get(USERNAME_KEY, String.class);
+    }
+
+    /**
+     * 从令牌中获取用户昵称
+     * 
+     * @param token JWT令牌
+     * @return 用户昵称
+     */
+    public String getNicknameFromToken(String token) {
+        Claims claims = parseToken(token);
+        return claims.get(NICKNAME_KEY, String.class);
+    }
+
+    
+    /**
+     * 获取令牌的过期时间
+     * 
+     * @param token JWT令牌
+     * @return 过期时间
+     */
+    public Date getExpirationFromToken(String token) {
+        Claims claims = parseToken(token);
+        return claims.getExpiration();
+    }
+    
+    /**
+     * 获取令牌的签发时间
+     * 
+     * @param token JWT令牌
+     * @return 签发时间
+     */
+    public Date getIssuedAtFromToken(String token) {
+        Claims claims = parseToken(token);
+        return claims.getIssuedAt();
+    }
+    
+    /**
+     * 获取令牌中的所有声明信息
+     * 
+     * @param token JWT令牌
+     * @return 包含所有声明的Map
+     */
+    public Map<String, Object> getAllClaimsFromToken(String token) {
+        Claims claims = parseToken(token);
+        return new HashMap<>(claims);
+    }
+    
+    /**
+     * 检查令牌类型是否为刷新令牌
+     * 
+     * @param token JWT令牌
+     * @return true-是刷新令牌，false-是访问令牌
+     */
+    public boolean isRefreshToken(String token) {
+        try {
+            Claims claims = parseToken(token);
+            return "refresh".equals(claims.get("type"));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+}
+```
