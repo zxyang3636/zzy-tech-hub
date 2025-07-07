@@ -1214,7 +1214,7 @@ tree
 ```
 
 **创建Redis配置文件**
-```[redis.conf]
+```txt{18}[redis.conf]
 # 创建Redis配置文件
 cat > /opt/redis-docker/conf/redis.conf << 'EOF'
 # ==================== 基础配置 ====================
@@ -1412,6 +1412,274 @@ docker exec redis-server redis-cli -a your_redis_password_123 slowlog get 10
 docker exec redis-server redis-cli -a your_redis_password_123 flushdb
 ```
 
+### RabbitMQ
+
+**创建项目目录**
+```
+# 创建RabbitMQ项目目录
+mkdir -p /opt/rabbitmq-docker/{data,logs,config,plugins}
+cd /opt/rabbitmq-docker
+
+# 目录结构说明
+tree
+/opt/rabbitmq-docker/
+├── config/         # 配置文件目录
+├── data/           # 数据持久化目录
+├── logs/           # 日志文件目录
+└── plugins/        # 插件目录
+```
+
+**创建RabbitMQ配置文件**
+```
+# 创建RabbitMQ配置文件
+cat > /opt/rabbitmq-docker/config/rabbitmq.conf << 'EOF'
+# ==================== 基础配置 ====================
+# 监听地址（0.0.0.0允许所有IP访问）
+listeners.tcp.default = 5672
+
+# 日志级别：debug, info, warning, error, critical, none
+log.console.level = info
+log.file.level = info
+
+# ==================== 管理界面配置 ====================
+# 启用管理插件
+management.tcp.port = 15672
+management.tcp.ip = 0.0.0.0
+
+# ==================== 用户和权限配置 ====================
+# 禁用guest用户远程访问（安全考虑）
+loopback_users.guest = false
+
+# ==================== 内存和磁盘配置 ====================
+# 内存高水位阈值（当内存使用超过此值时会阻塞生产者）
+vm_memory_high_watermark.relative = 0.6
+
+# 磁盘空间低水位阈值
+disk_free_limit.relative = 2.0
+
+# ==================== 集群配置 ====================
+# 集群节点类型（disc：磁盘节点，ram：内存节点）
+cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
+
+# ==================== 心跳配置 ====================
+# 客户端心跳间隔（秒）
+heartbeat = 60
+
+# ==================== 队列配置 ====================
+# 默认队列类型
+default_queue_type = classic
+
+# ==================== SSL/TLS配置（可选） ====================
+# 如果需要SSL，取消注释并配置证书路径
+# listeners.ssl.default = 5671
+# ssl_options.cacertfile = /etc/rabbitmq/certs/ca_certificate.pem
+# ssl_options.certfile = /etc/rabbitmq/certs/server_certificate.pem
+# ssl_options.keyfile = /etc/rabbitmq/certs/server_key.pem
+EOF
+```
+
+**创建用户初始化脚本**
+
+根据实际情况，修改配置文件
+```
+# 创建用户管理脚本
+cat > /opt/rabbitmq-docker/config/definitions.json << 'EOF'
+{
+  "users": [
+    {
+      "name": "admin",
+      "password": "your_admin_password_2024!",
+      "tags": ["administrator"]
+    },
+    {
+      "name": "app_user",
+      "password": "your_app_password_2024!",
+      "tags": [""]
+    }
+  ],
+  "vhosts": [
+    {"name": "/"},
+    {"name": "/dev"},
+    {"name": "/prod"}
+  ],
+  "permissions": [
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "admin",
+      "vhost": "/dev",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "admin",
+      "vhost": "/prod",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "app_user",
+      "vhost": "/dev",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "app_user",
+      "vhost": "/prod",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "policies": [],
+  "queues": [],
+  "exchanges": [],
+  "bindings": []
+}
+EOF
+```
+
+*权限说明：*
+- `configure`: 允许创建/删除队列和交换机
+- `write`: 允许发送消息
+- `read`: 允许接收消息
+- `.*` 表示完全权限
+
+**运行RabbitMQ容器**
+```bash
+docker run -d \
+  --name rabbitmq-server \
+  --hostname rabbitmq-node1 \
+  -p 5672:5672 \
+  -p 15672:15672 \
+  -p 25672:25672 \
+  -e RABBITMQ_DEFAULT_USER=admin \
+  -e RABBITMQ_DEFAULT_PASS=your_admin_password_2024! \
+  -v /opt/rabbitmq-docker/data:/var/lib/rabbitmq \
+  -v /opt/rabbitmq-docker/logs:/var/log/rabbitmq \
+  -v /opt/rabbitmq-docker/config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf \
+  -v /opt/rabbitmq-docker/config/definitions.json:/etc/rabbitmq/definitions.json \
+  -v /opt/rabbitmq-docker/plugins:/plugins  \
+  --restart always \
+  rabbitmq:3.12-management
+```
+
+| 端口  | 名称 | 名称 | 谁使用
+| -----|------|-----|------
+|5672|	AMQP端口|	应用程序连接RabbitMQ|	客户端应用（如SpringBoot应用）
+|15672|	管理界面端口|	Web管理控制台|	管理员（浏览器访问）
+|25672|	集群通信端口|	RabbitMQ节点间通信|	RabbitMQ节点之间
+
+---
+
+**--hostname的作用：**
+
+`--hostname rabbitmq-node1`设置了容器的主机名为`rabbitmq-node1`
+
+为什么`RabbitMQ`需要设置主机名？
+
+`RabbitMQ`的节点名称格式：`rabbit@<hostname>`
+
+```
+# 不设置hostname时（使用随机容器ID）
+节点名: rabbit@a1b2c3d4e5f6  # 每次重启都会变化
+
+# 设置hostname为rabbitmq-node1时
+节点名: rabbit@rabbitmq-node1  # 固定且有意义
+```
+
+1. 数据持久化的一致性
+```
+   # RabbitMQ在数据目录中会创建以节点名命名的文件夹
+   /var/lib/rabbitmq/mnesia/rabbit@rabbitmq-node1/
+   
+   # 如果hostname变化，RabbitMQ会认为这是一个新节点
+   # 可能导致数据无法正确加载
+```
+
+2. 集群管理
+```
+   # 在集群中，节点通过名称相互识别
+   rabbitmqctl cluster_status
+   # 输出：[{nodes,[{disc,[rabbit@rabbitmq-node1,rabbit@rabbitmq-node2]}]}]
+```
+
+3. 监控和日志
+```
+   # 日志中会显示节点名，便于问题定位
+   2024-01-01 10:00:00.123 [info] <0.123.0> accepting AMQP connection rabbit@rabbitmq-node1
+```
+
+不设置hostname会怎样？
+```
+# 问题：
+# 1. 节点名会是 rabbit@随机容器ID
+# 2. 每次重启容器，节点名都会变化
+# 3. 可能导致数据持久化问题
+# 4. 监控和日志不易识别
+```
+
+
+---
+
+**验证部署**
+```bash
+# 查看容器状态
+docker ps | grep rabbitmq
+
+# 查看RabbitMQ日志
+docker logs rabbitmq-server
+
+# 查看RabbitMQ状态
+docker exec rabbitmq-server rabbitmqctl status
+
+# 查看用户列表
+docker exec rabbitmq-server rabbitmqctl list_users
+
+# 查看虚拟主机
+docker exec rabbitmq-server rabbitmqctl list_vhosts
+```
+
+
+**启用插件**
+```bash
+docker exec -it rabbitmq-server rabbitmq-plugins enable rabbitmq_delayed_message_exchange
+
+# 查看已启用的插件
+docker exec rabbitmq-server rabbitmq-plugins list
+```
+
+🔧 **常用管理命令**
+```bash
+# 查看RabbitMQ容器状态
+docker ps | grep rabbitmq
+docker stats rabbitmq-server
+
+# 查看RabbitMQ日志
+docker logs rabbitmq-server
+docker logs -f rabbitmq-server --tail 100
+
+# 重启RabbitMQ容器
+docker restart rabbitmq-server
+
+# 停止/启动RabbitMQ容器
+docker stop rabbitmq-server
+docker start rabbitmq-server
+
+# 进入RabbitMQ容器
+docker exec -it rabbitmq-server bash
+
+# 查看集群状态
+docker exec rabbitmq-server rabbitmqctl cluster_status
+```
 
 ### Java
 ```Bash
