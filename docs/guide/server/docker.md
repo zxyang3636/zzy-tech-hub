@@ -1681,6 +1681,287 @@ docker exec -it rabbitmq-server bash
 docker exec rabbitmq-server rabbitmqctl cluster_status
 ```
 
+### Minio
+
+🐳 **Docker安装MinIO详细步骤**
+
+创建项目目录
+```
+# 创建MinIO项目目录
+mkdir -p /opt/minio-docker/{data,config,certs}
+cd /opt/minio-docker
+
+# 目录结构说明
+tree
+/opt/minio-docker/
+├── config/         # 配置文件目录
+├── data/           # 数据存储目录
+└── certs/          # SSL证书目录（可选）
+```
+
+
+**创建环境配置文件**
+
+💡 记得显示隐藏目录
+```bash
+# 创建环境变量配置文件
+cat > /opt/minio-docker/.env << 'EOF'
+# ==================== MinIO基础配置 ====================
+# 管理员用户名（不能是admin，建议用复杂用户名）
+MINIO_ROOT_USER=minioadmin
+
+# 管理员密码（至少8位）
+MINIO_ROOT_PASSWORD=MySecurePassword2024!
+
+# ==================== 域名和地址配置 ====================
+# MinIO服务器地址（生产环境建议配置域名）
+MINIO_SERVER_URL=http://localhost:9000
+
+# MinIO控制台地址
+MINIO_BROWSER_REDIRECT_URL=http://localhost:9001
+
+# ==================== 区域配置 ====================
+# 存储区域
+MINIO_REGION_NAME=us-east-1
+
+# ==================== 安全配置 ====================
+# 启用严格的S3兼容性
+MINIO_API_STRICT_S3_COMPAT=on
+
+# 启用HTTPS重定向（如果使用SSL）
+# MINIO_BROWSER_REDIRECT=on
+EOF
+```
+
+示例：
+```bash
+# ==================== 域名和地址配置 ====================
+# MinIO服务器地址（HTTPS）
+MINIO_SERVER_URL=https://www.zzyang.top:9000
+
+# MinIO控制台地址（HTTPS）
+MINIO_BROWSER_REDIRECT_URL=https://www.zzyang.top:9001
+```
+
+**创建MinIO配置文件**
+```
+# 创建MinIO配置文件
+cat > /opt/minio-docker/config/config.env << 'EOF'
+# ==================== 性能配置 ====================
+# 设置最大并发连接数
+MINIO_API_REQUESTS_MAX=10000
+
+# 设置读写缓冲区大小
+MINIO_API_REQUESTS_DEADLINE=10s
+
+# ==================== 日志配置 ====================
+# 日志级别：ERROR, WARN, INFO, DEBUG
+MINIO_LOG_LEVEL=INFO
+
+# 启用控制台日志
+MINIO_LOG_CONSOLE=on
+
+# ==================== 存储配置 ====================
+# 启用版本控制
+MINIO_VERSIONING=on
+
+# 设置默认存储类
+MINIO_STORAGE_CLASS_STANDARD=EC:2
+
+# ==================== 监控配置 ====================
+# 启用Prometheus指标
+MINIO_PROMETHEUS_AUTH_TYPE=public
+
+# ==================== 通知配置 ====================
+# Webhook通知端点（可选）
+# MINIO_NOTIFY_WEBHOOK_ENABLE=on
+# MINIO_NOTIFY_WEBHOOK_ENDPOINT=http://your-webhook-url
+EOF
+```
+
+**运行MinIO容器**
+```bash
+docker run -d \
+  --name minio-server \
+  --hostname minio-node1 \
+  -p 9000:9000 \
+  -p 9001:9001 \
+  --env-file /opt/minio-docker/.env \
+  --env-file /opt/minio-docker/config/config.env \
+  -v /opt/minio-docker/data:/data \
+  -v /opt/minio-docker/config:/etc/minio \
+  --restart always \
+  --health-cmd "curl -f http://localhost:9000/minio/health/live" \
+  --health-interval=30s \
+  --health-timeout=20s \
+  --health-retries=3 \
+  minio/minio server /data --console-address ":9001"
+```
+
+---
+
+`minio/minio server /data --console-address ":9001"` 详解
+```
+minio/minio
+#  ↑     ↑
+#  |     └── 镜像名称
+#  └────── 官方命名空间/组织名
+```
+
+版本选择：
+```bash
+# 使用最新版本
+minio/minio:latest
+
+# 使用特定版本（推荐生产环境）
+minio/minio:RELEASE.2024-01-18T22-51-28Z
+
+# 使用我们示例中的方式（默认latest）
+minio/minio
+```
+
+`server` - MinIO启动模式
+```bash
+# 完整的MinIO命令格式
+minio <command> [arguments...]
+
+# 主要命令：
+minio server    # 启动对象存储服务器（我们使用的）
+minio gateway   # 启动网关模式（已废弃）
+minio admin     # 管理命令
+minio client    # 客户端命令
+```
+
+`/data` - 数据存储路径
+```
+minio server /data
+#            └──── 告诉MinIO在容器内的/data目录存储数据
+```
+
+数据存储层次：
+```bash
+# 在容器内部
+/data/
+├── .minio.sys/          # MinIO系统文件
+│   ├── buckets/         # 存储桶元数据
+│   ├── config/          # 配置信息
+│   └── users/           # 用户信息
+├── bucket1/             # 用户创建的存储桶1
+│   ├── file1.jpg
+│   └── file2.pdf
+└── bucket2/             # 用户创建的存储桶2
+    └── document.docx
+```
+
+与Docker挂载的关系：
+```bash
+# 我们的Docker命令中
+-v /opt/minio-docker/data:/data
+#  ↑                      ↑
+#  宿主机路径              容器内路径
+
+# 实际效果：
+# 容器内的 /data 目录 = 宿主机的 /opt/minio-docker/data 目录
+# MinIO在容器内写入 /data/bucket1/file.jpg
+# 实际保存在宿主机 /opt/minio-docker/data/bucket1/file.jpg
+```
+
+
+`--console-address ":9001"` - 控制台地址配置
+为什么需要指定控制台地址？
+
+不指定会怎样：
+```bash
+# ❌ 不指定控制台地址
+minio server /data
+
+# 问题：
+# 1. 控制台可能使用随机端口
+# 2. 或者与API端口冲突
+# 3. 外部无法访问管理界面
+```
+
+---
+
+📄 **--env-file 环境变量文件的作用**
+
+两个环境变量文件的用途：
+```
+--env-file /opt/minio-docker/.env \              # 基础配置文件
+--env-file /opt/minio-docker/config/config.env \ # 高级配置文件
+```
+
+`.env` - 基础配置文件、存储敏感信息（用户名、密码）、存储基础连接信息
+
+`config.env` - 高级配置文件、存储性能调优参数 (运维人员可以单独调整性能参数，不用接触密码)
+
+实际使用场景：
+```
+# 开发环境
+--env-file .env.dev \
+--env-file config.dev.env
+
+# 生产环境
+--env-file .env.prod \       # 不同的密码和地址
+--env-file config.prod.env   # 不同的性能参数
+```
+
+---
+
+🏥 **健康检查参数详解**
+```bash
+--health-cmd "curl -f http://localhost:9000/minio/health/live" \
+--health-interval=30s \
+--health-timeout=20s \
+--health-retries=3 \
+```
+各参数详细说明：
+| 参数	| 含义| 	作用| 
+|-------|-----|------| 
+| --health-cmd |	健康检查命令 |	Docker定期执行此命令检查容器是否健康 |
+| --health-interval |	检查间隔 |	每30秒执行一次健康检查 |
+| --health-timeout |	超时时间 |	如果命令20秒内没响应，视为失败 |
+| --health-retries |	重试次数 |	连续3次失败后，标记容器为unhealthy |
+
+健康检查的工作流程：
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-07-08_15-20-18.png)
+
+查看健康检查状态：
+```bash
+curl -f http://localhost:9000/minio/health/live
+```
+- 返回200: 表示MinIO服务正常运行
+- 返回非200: 表示MinIO服务异常
+
+---
+
+| 参数	 | 核心作用	| 不设置的后果 | 
+|------------| -------|------------|
+| --hostname| 为MinIO节点提供固定、有意义的标识	| 节点名随机变化，集群管理困难，数据可能无法正确加载
+| --env-file | 	分离敏感配置和功能配置，便于管理 |	配置混乱，安全性差，维护困难
+| --health-*	 | 提供自动化的容器健康监控 |	无法及时发现服务异常，故障排查困难
+
+
+---
+
+**验证部署**
+```
+# 查看容器状态
+docker ps | grep minio
+
+# 查看MinIO日志
+docker logs minio-server
+
+# 健康检查
+docker exec minio-server curl -f http://localhost:9000/minio/health/live
+
+# 查看MinIO版本和状态
+docker exec minio-server minio --version
+```
+
+
+
+
 ### Java
 ```Bash
 docker run -d --name hm -p 8080:8080 --network xxx-network hmall
