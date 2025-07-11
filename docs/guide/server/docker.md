@@ -1683,6 +1683,11 @@ docker exec rabbitmq-server rabbitmqctl cluster_status
 
 ### Minio
 
+有的最新版本功能不全，需注意
+```bash
+docker pull minio/minio:RELEASE.2025-04-22T22-12-26Z
+```
+
 🐳 **Docker安装MinIO详细步骤**
 
 创建项目目录
@@ -1707,8 +1712,8 @@ tree
 # 创建环境变量配置文件
 cat > /opt/minio-docker/.env << 'EOF'
 # ==================== MinIO基础配置 ====================
-# 管理员用户名（不能是admin，建议用复杂用户名）
-MINIO_ROOT_USER=minioadmin
+# 管理员用户名（不能是admin/minioadmin，建议用复杂用户名）
+MINIO_ROOT_USER=xxxxxx
 
 # 管理员密码（至少8位）
 MINIO_ROOT_PASSWORD=MySecurePassword2024!
@@ -1726,21 +1731,11 @@ MINIO_REGION_NAME=us-east-1
 
 # ==================== 安全配置 ====================
 # 启用严格的S3兼容性
-MINIO_API_STRICT_S3_COMPAT=on
+#MINIO_API_STRICT_S3_COMPAT=on
 
 # 启用HTTPS重定向（如果使用SSL）
 # MINIO_BROWSER_REDIRECT=on
 EOF
-```
-
-示例：
-```bash
-# ==================== 域名和地址配置 ====================
-# MinIO服务器地址（HTTPS）
-MINIO_SERVER_URL=https://www.zzyang.top:9000
-
-# MinIO控制台地址（HTTPS）
-MINIO_BROWSER_REDIRECT_URL=https://www.zzyang.top:9001
 ```
 
 **创建MinIO配置文件**
@@ -1766,7 +1761,7 @@ MINIO_LOG_CONSOLE=on
 MINIO_VERSIONING=on
 
 # 设置默认存储类
-MINIO_STORAGE_CLASS_STANDARD=EC:2
+#MINIO_STORAGE_CLASS_STANDARD=EC:2
 
 # ==================== 监控配置 ====================
 # 启用Prometheus指标
