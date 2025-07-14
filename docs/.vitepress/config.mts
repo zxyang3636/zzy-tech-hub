@@ -4,12 +4,14 @@ import {
   groupIconMdPlugin,
   groupIconVitePlugin,
 } from "vitepress-plugin-group-icons";
+import { MermaidMarkdown, MermaidPlugin } from "vitepress-plugin-mermaid";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   markdown: {
     config(md) {
       md.use(groupIconMdPlugin); //代码组图标
+      md.use(MermaidMarkdown);
     },
     lineNumbers: true, // 代码快行数显示
     image: {
@@ -20,7 +22,14 @@ export default defineConfig({
   vite: {
     plugins: [
       groupIconVitePlugin(), //代码组图标
+      MermaidPlugin(),
     ],
+    optimizeDeps: {
+      include: ["mermaid"],
+    },
+    ssr: {
+      noExternal: ["mermaid"],
+    },
   },
 
   base: "/",

@@ -1480,3 +1480,436 @@ public class JwtUtil {
 
 }
 ```
+
+---
+
+# Java8 时间API
+
+为什么不推荐使用旧的Date类？❌
+
+旧Date类的问题：
+```java
+// 旧的Date类 - 有很多问题
+Date date = new Date();
+System.out.println(date); // 输出格式难看，时区混乱
+
+// 月份从0开始，容易搞错！
+Date date2 = new Date(2024, 12, 25); // 实际上是2025年1月25日！😱
+
+// 线程不安全
+SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+// 多线程使用会出错
+```
+
+
+主要问题：
+- 线程不安全 - `Date` 和 `Calendar` 在多线程环境下使用时，可能会出现数据不一致的情况。多线程环境容易出错
+- API设计糟糕 - 月份从0开始计数
+- 可变对象 - 容易被意外修改
+
+
+
+```mermaid
+flowchart TB
+    API[Java 8 时间API] --> LD[LocalDate 日期]
+    API --> LT[LocalTime 时间] 
+    API --> LDT[LocalDateTime 日期时间]
+    API --> Fmt[DateTimeFormatter 格式化]
+```
+
+![](https://zzyang.oss-cn-hangzhou.aliyuncs.com/img/Snipaste_2025-07-13_11-15-03.png)
+
+## LocalDate - 日期操作 📅
+
+创建LocalDate的语法
+```java
+// 语法1：获取今天日期
+LocalDate today = LocalDate.now();
+
+// 语法2：创建指定日期 - of(年, 月, 日)
+LocalDate specificDate = LocalDate.of(2024, 12, 25);
+//                                    参数1  参数2  参数3
+//                                    年份   月份   日期
+
+// 语法3：从字符串解析 - parse("字符串")  
+LocalDate parsed = LocalDate.parse("2024-12-25");
+//                                  必须是这种格式：年-月-日
+
+// 打印结果
+System.out.println(today);        // 输出：2024-12-12
+System.out.println(specificDate); // 输出：2024-12-25
+```
+
+LocalDate的常用方法和参数
+```java
+LocalDate date = LocalDate.now();
+
+// 获取信息的方法（无参数）
+int year = date.getYear();          // 获取年份
+int month = date.getMonthValue();   // 获取月份（1-12）
+int day = date.getDayOfMonth();     // 获取这个月的第几天
+int dayOfYear = date.getDayOfYear(); // 获取这一年的第几天
+
+System.out.println("年份：" + year);   // 比如：2024
+System.out.println("月份：" + month);  // 比如：12  
+System.out.println("日期：" + day);    // 比如：12
+
+// 加减操作（参数是数字）
+LocalDate tomorrow = date.plusDays(1);      // 加1天
+LocalDate nextWeek = date.plusWeeks(1);     // 加1周
+LocalDate nextMonth = date.plusMonths(1);   // 加1个月
+LocalDate nextYear = date.plusYears(1);     // 加1年
+
+LocalDate yesterday = date.minusDays(1);    // 减1天
+LocalDate lastMonth = date.minusMonths(1);  // 减1个月
+
+// 设置操作（参数是新的值）
+LocalDate newDate = date.withYear(2025);        // 设置年份为2025
+LocalDate newDate2 = date.withMonth(1);         // 设置月份为1月
+LocalDate newDate3 = date.withDayOfMonth(1);    // 设置为当月1号
+
+// 比较操作（参数是另一个LocalDate）
+LocalDate otherDate = LocalDate.of(2024, 12, 25);
+boolean isBefore = date.isBefore(otherDate);    // 是否在之前
+boolean isAfter = date.isAfter(otherDate);      // 是否在之后
+boolean isEqual = date.isEqual(otherDate);      // 是否相等
+```
+
+
+
+## LocalTime - 时间操作 ⏰
+```java
+// 语法1：获取现在时间
+LocalTime now = LocalTime.now();
+
+// 语法2：创建指定时间 - of(小时, 分钟)
+LocalTime time1 = LocalTime.of(14, 30);        // 14:30
+//                              参数1  参数2
+//                              小时   分钟
+
+// 语法3：创建指定时间 - of(小时, 分钟, 秒)
+LocalTime time2 = LocalTime.of(14, 30, 45);    // 14:30:45
+//                              参数1  参数2  参数3
+//                              小时   分钟   秒
+
+// 语法4：从字符串解析
+LocalTime parsed = LocalTime.parse("14:30:45");
+
+// 预定义的时间
+LocalTime noon = LocalTime.NOON;        // 正午12:00
+LocalTime midnight = LocalTime.MIDNIGHT; // 午夜00:00
+```
+
+LocalTime的常用方法
+```java
+LocalTime time = LocalTime.now();
+
+// 获取信息（无参数）
+int hour = time.getHour();      // 获取小时（0-23）
+int minute = time.getMinute();  // 获取分钟（0-59）
+int second = time.getSecond();  // 获取秒（0-59）
+
+// 加减操作（参数是数字）
+LocalTime later = time.plusHours(2);        // 加2小时
+LocalTime muchLater = time.plusMinutes(30); // 加30分钟
+LocalTime evenLater = time.plusSeconds(45); // 加45秒
+
+LocalTime earlier = time.minusHours(1);     // 减1小时
+
+// 设置操作（参数是新的值）
+LocalTime newTime = time.withHour(18);      // 设置为18点
+LocalTime newTime2 = time.withMinute(0);    // 设置分钟为0
+LocalTime newTime3 = time.withSecond(0);    // 设置秒为0
+```
+
+## LocalDateTime - 日期时间操作 📅⏰
+
+```java
+// 语法1：获取现在的日期时间
+LocalDateTime now = LocalDateTime.now();
+
+// 语法2：创建指定日期时间 - of(年, 月, 日, 小时, 分钟)
+LocalDateTime dateTime1 = LocalDateTime.of(2024, 12, 25, 14, 30);
+//                                         参数1  参数2  参数3  参数4  参数5
+//                                         年份   月份   日期   小时   分钟
+
+// 语法3：创建指定日期时间 - of(年, 月, 日, 小时, 分钟, 秒)  
+LocalDateTime dateTime2 = LocalDateTime.of(2024, 12, 25, 14, 30, 45);
+//                                         参数1  参数2  参数3  参数4  参数5  参数6
+//                                         年份   月份   日期   小时   分钟   秒
+
+// 语法4：从字符串解析
+LocalDateTime parsed = LocalDateTime.parse("2024-12-25T14:30:45");
+//                                         必须是这种格式：年-月-日T小时:分钟:秒
+
+// 语法5：组合LocalDate和LocalTime
+LocalDate date = LocalDate.of(2024, 12, 25);
+LocalTime time = LocalTime.of(14, 30, 45);
+LocalDateTime combined = LocalDateTime.of(date, time);
+```
+
+
+LocalDateTime的常用方法
+```java
+LocalDateTime dateTime = LocalDateTime.now();
+
+// 获取日期和时间部分
+LocalDate datePart = dateTime.toLocalDate();    // 获取日期部分
+LocalTime timePart = dateTime.toLocalTime();    // 获取时间部分
+
+// 获取各种信息（继承了LocalDate和LocalTime的所有方法）
+int year = dateTime.getYear();
+int month = dateTime.getMonthValue(); 
+int day = dateTime.getDayOfMonth();
+int hour = dateTime.getHour();
+int minute = dateTime.getMinute();
+int second = dateTime.getSecond();
+
+// 加减操作（支持所有时间单位）
+LocalDateTime tomorrow = dateTime.plusDays(1);      // 加1天
+LocalDateTime nextHour = dateTime.plusHours(1);     // 加1小时
+LocalDateTime nextMinute = dateTime.plusMinutes(30); // 加30分钟
+
+// 可以链式调用（连续调用多个方法）
+LocalDateTime complex = dateTime.plusDays(1)        // 加1天
+                               .plusHours(2)         // 再加2小时
+                               .plusMinutes(30);     // 再加30分钟
+```
+
+
+## 时间格式化 - DateTimeFormatter 📝
+
+```java
+// 创建格式化器
+DateTimeFormatter formatter = DateTimeFormatter.ofPattern("格式模式");
+
+// 使用格式化器
+LocalDateTime now = LocalDateTime.now();
+String formatted = now.format(formatter);
+```
+
+格式模式符号详解
+
+
+|符号|	含义	|示例|
+|----|------|----|
+|y	| 年份 | 	2024|
+|M	| 月份 | 	12|
+|d	| 日期 | 	25|
+|H	| 小时(0-23) | 	14|
+|m	| 分钟 | 	30|
+|s	| 秒 | 	45|
+|E	| 星期 | 	星期一|
+
+实际格式化示例
+```java
+LocalDateTime now = LocalDateTime.now();
+
+// 格式1：标准格式
+DateTimeFormatter fmt1 = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+String result1 = now.format(fmt1);
+System.out.println(result1); // 输出：2024-12-12 14:30:45
+
+// 格式2：中文格式  
+DateTimeFormatter fmt2 = DateTimeFormatter.ofPattern("yyyy年MM月dd日 HH时mm分ss秒");
+String result2 = now.format(fmt2);
+System.out.println(result2); // 输出：2024年12月12日 14时30分45秒
+
+// 格式3：只要日期
+DateTimeFormatter fmt3 = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+String result3 = now.format(fmt3);
+System.out.println(result3); // 输出：2024-12-12
+
+// 格式4：只要时间
+DateTimeFormatter fmt4 = DateTimeFormatter.ofPattern("HH:mm:ss");
+String result4 = now.format(fmt4);
+System.out.println(result4); // 输出：14:30:45
+
+// 格式5：美式格式
+DateTimeFormatter fmt5 = DateTimeFormatter.ofPattern("MM/dd/yyyy");
+String result5 = now.format(fmt5);
+System.out.println(result5); // 输出：12/12/2024
+```
+
+---
+
+**字符串解析（反向操作）**
+```java
+// 从格式化的字符串解析回日期时间
+String dateString = "2024-12-25 14:30:45";
+DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+LocalDateTime parsed = LocalDateTime.parse(dateString, formatter);
+System.out.println(parsed); // 输出：2024-12-25T14:30:45
+```
+
+## 时间戳 - Instant ⏱️
+**Instant的语法**
+
+```java
+// 语法1：获取当前UTC时间戳
+Instant now = Instant.now();
+
+// 语法2：从毫秒时间戳创建
+long timestamp = System.currentTimeMillis();
+Instant fromMilli = Instant.ofEpochMilli(timestamp);
+
+// 语法3：从秒时间戳创建  
+Instant fromSecond = Instant.ofEpochSecond(1640995200);
+
+// 转换为时间戳
+long milliTimestamp = now.toEpochMilli();    // 毫秒时间戳
+long secondTimestamp = now.getEpochSecond(); // 秒时间戳
+```
+
+Instant与LocalDateTime互转
+```java
+// LocalDateTime -> Instant（需要指定时区）
+LocalDateTime dateTime = LocalDateTime.now();
+Instant instant = dateTime.toInstant(ZoneOffset.ofHours(8)); // 东八区
+
+// Instant -> LocalDateTime（需要指定时区）
+Instant instant2 = Instant.now();
+LocalDateTime dateTime2 = LocalDateTime.ofInstant(instant2, ZoneId.systemDefault());
+```
+
+## 时间计算 🧮
+
+Duration - 计算时间差
+```java
+// 语法：Duration.between(开始时间, 结束时间)
+LocalDateTime start = LocalDateTime.of(2024, 12, 25, 14, 0, 0);
+LocalDateTime end = LocalDateTime.of(2024, 12, 25, 16, 30, 45);
+
+Duration duration = Duration.between(start, end);
+
+// 获取不同单位的时间差
+long hours = duration.toHours();        // 小时数：2
+long minutes = duration.toMinutes();    // 分钟数：150
+long seconds = duration.getSeconds();   // 秒数：9045
+
+System.out.println("相差" + hours + "小时");
+System.out.println("相差" + minutes + "分钟");  
+System.out.println("相差" + seconds + "秒");
+```
+
+Period - 计算日期差
+```java
+// 语法：Period.between(开始日期, 结束日期)
+LocalDate birthDate = LocalDate.of(1990, 5, 15);
+LocalDate today = LocalDate.now();
+
+Period period = Period.between(birthDate, today);
+
+// 获取年月日差值
+int years = period.getYears();      // 年数
+int months = period.getMonths();    // 月数  
+int days = period.getDays();        // 天数
+
+System.out.println("年龄：" + years + "年" + months + "个月" + days + "天");
+```
+
+
+
+
+
+## 实用方法总结 📋
+
+**判断和比较方法**
+```java
+LocalDate date = LocalDate.now();
+
+// 判断方法（返回boolean）
+boolean isLeapYear = date.isLeapYear();        // 是否闰年
+boolean isBefore = date.isBefore(otherDate);   // 是否在之前
+boolean isAfter = date.isAfter(otherDate);     // 是否在之后
+boolean isEqual = date.isEqual(otherDate);     // 是否相等
+
+// 获取长度
+int monthLength = date.lengthOfMonth();        // 这个月有几天
+int yearLength = date.lengthOfYear();          // 这一年有几天（365或366）
+```
+
+
+
+**常用获取方法**
+```java
+LocalDate date = LocalDate.now();
+
+// 获取特殊日期
+LocalDate firstDayOfMonth = date.withDayOfMonth(1);                    // 本月第一天
+LocalDate lastDayOfMonth = date.withDayOfMonth(date.lengthOfMonth());  // 本月最后一天
+LocalDate firstDayOfYear = date.withDayOfYear(1);                      // 本年第一天
+LocalDate lastDayOfYear = date.withDayOfYear(date.lengthOfYear());     // 本年最后一天
+```
+
+
+**记忆口诀 🎯**
+
+创建时间：
+- `now()` = 现在
+- `of()` = 指定
+- `parse()` = 解析
+
+加减时间：
+- `plus` = 加
+- `minus` = 减
+- `with` = 设置
+
+获取信息：
+- `get` = 获取
+- `to` = 转换
+
+比较判断：
+- `is` = 判断
+- `Before/After/Equal` = 前/后/等
+
+```mermaid
+flowchart LR
+    Start([Java 8<br/>时间API]) --> Basic[基础类]
+    Start --> Advanced[时区类] 
+    Start --> Tools[工具类]
+    
+    Basic --> LD[LocalDate<br/>📅 日期]
+    Basic --> LT[LocalTime<br/>⏰ 时间]
+    Basic --> LDT[LocalDateTime<br/>📅⏰ 日期时间]
+    
+    Advanced --> ZDT[ZonedDateTime<br/>🌍 带时区]
+    Advanced --> Instant[Instant<br/>⏱️ 时间戳]
+    Advanced --> Offset[OffsetDateTime<br/>⚡ 带偏移]
+    
+    Tools --> Fmt[DateTimeFormatter<br/>📝 格式化]
+    Tools --> Dur[Duration<br/>⏳ 时长]
+    Tools --> Per[Period<br/>📆 周期]
+    
+    LD --> LDMethod[now<br/>of年月日<br/>plusDays<br/>getYear<br/>&nbsp;]
+    
+    LT --> LTMethod[now<br/>of时分秒<br/>plusHours<br/>getHour<br/>&nbsp;]
+    
+    LDT --> LDTMethod[now<br/>of完整时间<br/>format<br/>plusDays<br/>&nbsp;]
+    
+    Fmt --> FmtMethod[ofPattern<br/>parse<br/>format<br/>&nbsp;]
+    
+    Dur --> DurMethod[between<br/>ofHours<br/>toMinutes<br/>&nbsp;]
+    
+    Per --> PerMethod[between<br/>ofYears<br/>getYears<br/>&nbsp;]
+    
+    style Start fill:#1976d2,stroke:#0d47a1,stroke-width:3px,color:#ffffff
+    style Basic fill:#4caf50,stroke:#2e7d32,stroke-width:2px,color:#ffffff
+    style Advanced fill:#9c27b0,stroke:#6a1b9a,stroke-width:2px,color:#ffffff
+    style Tools fill:#ff9800,stroke:#e65100,stroke-width:2px,color:#ffffff
+    style LD fill:#e8f5e8,stroke:#4caf50,stroke-width:2px,color:#1b5e20
+    style LT fill:#e8f5e8,stroke:#4caf50,stroke-width:2px,color:#1b5e20
+    style LDT fill:#e8f5e8,stroke:#4caf50,stroke-width:2px,color:#1b5e20
+    style ZDT fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px,color:#4a148c
+    style Instant fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px,color:#4a148c
+    style Offset fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px,color:#4a148c
+    style Fmt fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#e65100
+    style Dur fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#e65100
+    style Per fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#e65100
+    style LDMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
+    style LTMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
+    style LDTMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
+    style FmtMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
+    style DurMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
+    style PerMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
+```
