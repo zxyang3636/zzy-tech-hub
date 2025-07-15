@@ -1913,3 +1913,416 @@ flowchart LR
     style DurMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
     style PerMethod fill:#f1f8e9,stroke:#689f38,stroke-width:2px,color:#33691e
 ```
+
+
+
+
+
+
+
+
+# 一对多分页模糊查询解决方案
+
+- 第一步：分页查询父实体ID列表
+只查询 父表，进行分页和排序，目的是获取当前页应该显示的 父实体的ID集合。
+
+- 第二步：根据父实体ID列表，查询所有相关的子实体
+使用第一步获取的ID集合，通过 `WHERE parent_id IN (...)` 一次性查询出所有相关的子实体。
+
+- 第三步：在应用层（Java代码中）进行数据组装
+将第二步查出的子实体列表，根据 parent_id 分配给第一步查出的父实体对象。
+
+
+```mermaid
+flowchart TD
+Start[开始分页查询] --> Step1[第1步: PageHelper分页查询用户ID]
+Step1 --> Step2[第2步: 根据用户ID查询用户和订单详情]
+Step2 --> Step3[第3步: 组装数据返回PageInfo]
+
+Step1 --> SQL1[SELECT id FROM users
+WHERE 条件
+ORDER BY create_time
+-- PageHelper自动添加LIMIT <br/>&nbsp;&nbsp;&nbsp;&nbsp;]
+
+Step2 --> SQL2[SELECT u.*, o.*
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+WHERE u.id IN 用户ID列表
+ORDER BY u.create_time, o.create_time <br/>&nbsp;&nbsp;&nbsp;]
+
+Step3 --> Result[返回正确的分页结果
+• 按用户分页
+• 每个用户显示完整订单
+• count统计准确 <br/>&nbsp;&nbsp;]
+
+style Start fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+style Step1 fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+style Step2 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+style Step3 fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
+style Result fill:#ffebee,stroke:#f44336,stroke-width:3px
+```
+
+分页主体：永远是父实体。pageSize 定义的是每页显示多少个父实体。
+
+让我们用一个具体例子：用户(User) 和 订单(Order) 的一对多关系
+
+**数据库表结构** 🗄️
+
+```sql
+-- 用户表（父表）
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    address VARCHAR(200),
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 订单表（子表）
+CREATE TABLE orders (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    order_no VARCHAR(50) NOT NULL,
+    product_name VARCHAR(200),
+    amount DECIMAL(10,2),
+    status TINYINT DEFAULT 1,
+    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_order_no (order_no),
+    INDEX idx_product_name (product_name)
+);
+
+-- 插入测试数据
+INSERT INTO users (username, email, phone, address) VALUES
+('张三', 'zhangsan@email.com', '13800138000', '北京市朝阳区'),
+('李四', 'lisi@email.com', '13800138001', '上海市浦东新区'),
+('王五', 'wangwu@email.com', '13800138002', '广州市天河区'),
+('赵六', 'zhaoliu@email.com', '13800138003', '深圳市南山区');
+
+INSERT INTO orders (user_id, order_no, product_name, amount, status) VALUES
+(1, 'ORD001', 'iPhone 15手机', 7999.00, 1),
+(1, 'ORD002', 'MacBook Pro电脑', 12999.00, 1),
+(1, 'ORD003', 'Java编程书籍', 89.00, 2),
+(2, 'ORD004', '耐克运动鞋', 899.00, 1),
+(2, 'ORD005', 'Adidas衣服', 299.00, 1),
+(3, 'ORD006', '有机食品大礼包', 199.00, 1),
+(4, 'ORD007', '小米手机', 2999.00, 1),
+(4, 'ORD008', '华为耳机', 399.00, 2);
+```
+
+```java
+// 用户实体
+@Data
+public class User {
+    private Long id;
+    private String username;
+    private String email;
+    private String phone;
+    private String address;
+    private Date createTime;
+}
+
+// 订单实体
+@Data
+public class Order {
+    private Long id;
+    private Long userId;
+    private String orderNo;
+    private String productName;
+    private BigDecimal amount;
+    private Integer status;
+    private Date createTime;
+}
+
+// 用户订单VO（用于返回给前端）
+@Data
+public class UserWithOrdersVO {
+    private Long userId;
+    private String username;
+    private String email;
+    private String phone;
+    private String address;
+    private Date userCreateTime;
+    private List<OrderVO> orders;
+    private Integer orderCount;
+    private BigDecimal totalAmount;
+}
+
+@Data
+public class OrderVO {
+    private Long orderId;
+    private String orderNo;
+    private String productName;
+    private BigDecimal amount;
+    private Integer status;
+    private Date orderCreateTime;
+}
+
+// 查询请求对象
+@Data
+public class UserOrderQueryRequest {
+    private String userKeyword;     // 用户搜索关键词
+    private String orderKeyword;    // 订单搜索关键词
+    private Integer orderStatus;    // 订单状态
+    private Date startTime;         // 开始时间
+    private Date endTime;           // 结束时间
+}
+```
+
+**Mapper层实现**
+```java{11-13,49-51}
+@Mapper
+public interface UserOrderMapper {
+    
+    /**
+     * 第1步：分页查询符合条件的用户ID列表
+     * 这里PageHelper会自动添加LIMIT和COUNT查询
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT u.id, u.create_time " +
+            "FROM users u " +
+            "<if test='request.orderKeyword != null and request.orderKeyword != \"\"'>" +
+            "  INNER JOIN orders o ON u.id = o.user_id " +
+            "</if>" +
+            "WHERE 1=1 " +
+            "<if test='request.userKeyword != null and request.userKeyword != \"\"'>" +
+            "  AND (u.username LIKE CONCAT('%', #{request.userKeyword}, '%') " +
+            "       OR u.email LIKE CONCAT('%', #{request.userKeyword}, '%') " +
+            "       OR u.phone LIKE CONCAT('%', #{request.userKeyword}, '%')) " +
+            "</if>" +
+            "<if test='request.orderKeyword != null and request.orderKeyword != \"\"'>" +
+            "  AND (o.order_no LIKE CONCAT('%', #{request.orderKeyword}, '%') " +
+            "       OR o.product_name LIKE CONCAT('%', #{request.orderKeyword}, '%')) " +
+            "</if>" +
+            "<if test='request.orderStatus != null'>" +
+            "  AND o.status = #{request.orderStatus} " +
+            "</if>" +
+            "<if test='request.startTime != null'>" +
+            "  AND u.create_time >= #{request.startTime} " +
+            "</if>" +
+            "<if test='request.endTime != null'>" +
+            "  AND u.create_time <= #{request.endTime} " +
+            "</if>" +
+            "ORDER BY u.create_time DESC" +
+            "</script>")
+    List<UserIdWithCreateTime> selectUserIdsWithPaging(@Param("request") UserOrderQueryRequest request);
+    
+    /**
+     * 第2步：根据用户ID列表查询用户和订单详情
+     */
+    @Select("<script>" +
+            "SELECT " +
+            "    u.id as user_id, u.username, u.email, u.phone, u.address, " +
+            "    u.create_time as user_create_time, " +
+            "    o.id as order_id, o.order_no, o.product_name, o.amount, " +
+            "    o.status, o.create_time as order_create_time " +
+            "FROM users u " +
+            "LEFT JOIN orders o ON u.id = o.user_id " +
+            "WHERE u.id IN " +
+            "<foreach collection='userIds' item='userId' open='(' separator=',' close=')'>" +
+            "    #{userId}" +
+            "</foreach> " +
+            "<if test='request.orderKeyword != null and request.orderKeyword != \"\"'>" +
+            "  AND (o.id IS NULL OR " +
+            "       o.order_no LIKE CONCAT('%', #{request.orderKeyword}, '%') OR " +
+            "       o.product_name LIKE CONCAT('%', #{request.orderKeyword}, '%')) " +
+            "</if>" +
+            "<if test='request.orderStatus != null'>" +
+            "  AND (o.id IS NULL OR o.status = #{request.orderStatus}) " +
+            "</if>" +
+            "ORDER BY " +
+            "o.create_time DESC" +
+            "</script>")
+    @Results({
+        @Result(property = "userId", column = "user_id"),
+        @Result(property = "username", column = "username"),
+        @Result(property = "email", column = "email"),
+        @Result(property = "phone", column = "phone"),
+        @Result(property = "address", column = "address"),
+        @Result(property = "userCreateTime", column = "user_create_time"),
+        @Result(property = "orderId", column = "order_id"),
+        @Result(property = "orderNo", column = "order_no"),
+        @Result(property = "productName", column = "product_name"),
+        @Result(property = "amount", column = "amount"),
+        @Result(property = "status", column = "status"),
+        @Result(property = "orderCreateTime", column = "order_create_time")
+    })
+    List<UserOrderRawData> selectUserOrderDetailsByUserIds(
+        @Param("userIds") List<Long> userIds,
+        @Param("request") UserOrderQueryRequest request
+    );
+}
+
+// 辅助类：用于接收用户ID和创建时间
+@Data
+public class UserIdWithCreateTime {
+    private Long id;
+    private Date createTime;
+}
+
+// 原始数据类：用于接收JOIN查询结果
+@Data
+public class UserOrderRawData {
+    private Long userId;
+    private String username;
+    private String email;
+    private String phone;
+    private String address;
+    private Date userCreateTime;
+    private Long orderId;
+    private String orderNo;
+    private String productName;
+    private BigDecimal amount;
+    private Integer status;
+    private Date orderCreateTime;
+}
+```
+
+
+**Service层核心实现**
+```java
+@Service
+@Slf4j
+public class UserOrderService {
+    
+    @Autowired
+    private UserOrderMapper userOrderMapper;
+    
+    /**
+     * 方案1：完整版 - 支持复杂查询条件
+     */
+    public PageInfo<UserWithOrdersVO> getUserOrdersWithPageHelper(
+            UserOrderQueryRequest request, int pageNum, int pageSize) {
+        
+        log.info("开始分页查询用户订单: pageNum={}, pageSize={}, request={}", pageNum, pageSize, request);
+        
+        // 第1步：使用PageHelper分页查询用户ID
+        PageHelper.startPage(pageNum, pageSize);
+        List<UserIdWithCreateTime> userIdList = userOrderMapper.selectUserIdsWithPaging(request);
+        PageInfo<UserIdWithCreateTime> pageInfo = new PageInfo<>(userIdList);
+        
+        log.info("查询到用户ID数量: {}, 总记录数: {}", userIdList.size(), pageInfo.getTotal());
+        
+        // 如果没有用户，直接返回空结果
+        if (userIdList.isEmpty()) {
+            return createEmptyPageInfo(pageNum, pageSize);
+        }
+        
+        // 第2步：根据用户ID查询详细信息
+        List<Long> userIds = userIdList.stream()
+                .map(UserIdWithCreateTime::getId)
+                .collect(Collectors.toList());
+        
+        List<UserOrderRawData> rawDataList = userOrderMapper.selectUserOrderDetailsByUserIds(userIds, request);
+        
+        // 第3步：数据转换和组装
+        List<UserWithOrdersVO> userOrderList = convertRawDataToVO(rawDataList);
+        
+        // 第4步：构建最终的PageInfo
+        PageInfo<UserWithOrdersVO> result = new PageInfo<>();
+        result.setList(userOrderList);
+        result.setPageNum(pageInfo.getPageNum());
+        result.setPageSize(pageInfo.getPageSize());
+        result.setTotal(pageInfo.getTotal());
+        result.setPages(pageInfo.getPages());
+        result.setSize(userOrderList.size());
+        result.setStartRow(pageInfo.getStartRow());
+        result.setEndRow(pageInfo.getEndRow());
+        result.setIsFirstPage(pageInfo.isIsFirstPage());
+        result.setIsLastPage(pageInfo.isIsLastPage());
+        result.setHasPreviousPage(pageInfo.isHasPreviousPage());
+        result.setHasNextPage(pageInfo.isHasNextPage());
+        result.setNavigatePages(pageInfo.getNavigatePages());
+        result.setNavigatepageNums(pageInfo.getNavigatepageNums());
+        result.setNavigateFirstPage(pageInfo.getNavigateFirstPage());
+        result.setNavigateLastPage(pageInfo.getNavigateLastPage());
+        result.setPrePage(pageInfo.getPrePage());
+        result.setNextPage(pageInfo.getNextPage());
+        
+        log.info("分页查询完成，返回用户数量: {}", userOrderList.size());
+        return result;
+    }
+    
+    /**
+     * 数据转换：将原始数据转换为VO
+     */
+    private List<UserWithOrdersVO> convertRawDataToVO(List<UserOrderRawData> rawDataList) {
+        Map<Long, List<UserOrderRawData>> userDataMap = rawDataList.stream()
+                .collect(Collectors.groupingBy(UserOrderRawData::getUserId));
+        
+        List<UserWithOrdersVO> result = new ArrayList<>();
+        
+        for (Map.Entry<Long, List<UserOrderRawData>> entry : userDataMap.entrySet()) {
+            List<UserOrderRawData> userRawDataList = entry.getValue();
+            UserOrderRawData firstRecord = userRawDataList.get(0);
+            
+            // 构建用户信息
+            UserWithOrdersVO userVO = new UserWithOrdersVO();
+            userVO.setUserId(firstRecord.getUserId());
+            userVO.setUsername(firstRecord.getUsername());
+            userVO.setEmail(firstRecord.getEmail());
+            userVO.setPhone(firstRecord.getPhone());
+            userVO.setAddress(firstRecord.getAddress());
+            userVO.setUserCreateTime(firstRecord.getUserCreateTime());
+            
+            // 构建订单列表
+            List<OrderVO> orders = userRawDataList.stream()
+                    .filter(data -> data.getOrderId() != null)
+                    .map(this::convertToOrderVO)
+                    .collect(Collectors.toList());
+            
+            userVO.setOrders(orders);
+            userVO.setOrderCount(orders.size());
+            userVO.setTotalAmount(calculateTotalAmount(orders));
+            
+            result.add(userVO);
+        }
+        
+        return result;
+    }
+    
+    private OrderVO convertToOrderVO(UserOrderRawData rawData) {
+        OrderVO orderVO = new OrderVO();
+        orderVO.setOrderId(rawData.getOrderId());
+        orderVO.setOrderNo(rawData.getOrderNo());
+        orderVO.setProductName(rawData.getProductName());
+        orderVO.setAmount(rawData.getAmount());
+        orderVO.setStatus(rawData.getStatus());
+        orderVO.setOrderCreateTime(rawData.getOrderCreateTime());
+        return orderVO;
+    }
+    
+    private BigDecimal calculateTotalAmount(List<OrderVO> orders) {
+        return orders.stream()
+                .map(OrderVO::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+    
+    private PageInfo<UserWithOrdersVO> createEmptyPageInfo(int pageNum, int pageSize) {
+        PageInfo<UserWithOrdersVO> pageInfo = new PageInfo<>();
+        pageInfo.setList(new ArrayList<>());
+        pageInfo.setPageNum(pageNum);
+        pageInfo.setPageSize(pageSize);
+        pageInfo.setTotal(0);
+        pageInfo.setPages(0);
+        pageInfo.setSize(0);
+        pageInfo.setIsFirstPage(true);
+        pageInfo.setIsLastPage(true);
+        pageInfo.setHasPreviousPage(false);
+        pageInfo.setHasNextPage(false);
+        return pageInfo;
+    }
+}
+```
+
+
+**核心要点**
+1. 两步查询法：先分页查父表ID，再查详情
+2. 正确使用`PageHelper`：只在第一个查询使用，立即获取`PageInfo`
+3. 数据转换：在Service层进行数据组装和转换
+
+**注意事项**
+- `PageHelper.startPage()` 必须紧跟第一个查询
