@@ -11,6 +11,7 @@ export const nav: DefaultTheme.Config["nav"] = [
       { text: "Docker", link: "/guide/server/docker" },
       { text: "RabbitMQ", link: "/guide/server/rabbitmq" },
       { text: "Elasticsearch", link: "/guide/server/elasticsearch" },
+      { text: "MySQL", link: "/guide/server/mysql" },
       {
         // 分组标题1
         text: "其他",
